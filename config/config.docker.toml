@@ -3,7 +3,7 @@
 
 [app]
 log_level    = "info"
-metrics_addr = ":9100"  # overridden per service via CHAINPULSE_METRICS_ADDR if needed
+metrics_addr = "${METRICS_ADDR}"  # set per service via compose environment
 
 [kafka]
 brokers                = ["kafka:9092"]
