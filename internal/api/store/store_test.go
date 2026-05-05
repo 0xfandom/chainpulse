@@ -41,7 +41,7 @@ func (f *fakeQueryConn) Query(_ context.Context, query string, args ...any) (dri
 	return &fakeRows{}, nil
 }
 func (f *fakeQueryConn) Ping(context.Context) error { return nil }
-func (f *fakeQueryConn) Close() error                { return nil }
+func (f *fakeQueryConn) Close() error               { return nil }
 
 func TestReadStore_QueryConstants(t *testing.T) {
 	for name, q := range map[string]string{
