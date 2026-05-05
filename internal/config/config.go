@@ -32,6 +32,9 @@ const (
 	defaultAPIWSReadBytes     = 4096
 	defaultAPIWSWriteBytes    = 4096
 	defaultAPIWSOriginCheck   = "strict"
+	defaultMCPAddr            = ":3001"
+	defaultMCPTransport       = "sse"
+	defaultMCPCacheTTL        = 60 * time.Second
 )
 
 // envVarPattern matches ${VAR_NAME} placeholders. Names accept letters,
@@ -123,6 +126,15 @@ func applyDefaults(cfg *types.AppConfig) {
 	if cfg.API.WebSocket.OriginCheck == "" {
 		cfg.API.WebSocket.OriginCheck = defaultAPIWSOriginCheck
 	}
+	if cfg.MCP.Addr == "" {
+		cfg.MCP.Addr = defaultMCPAddr
+	}
+	if cfg.MCP.Transport == "" {
+		cfg.MCP.Transport = defaultMCPTransport
+	}
+	if cfg.MCP.CacheTTL == 0 {
+		cfg.MCP.CacheTTL = types.Duration(defaultMCPCacheTTL)
+	}
 }
 
 // Substitute replaces every ${VAR} reference in src with the value of the
@@ -191,6 +203,14 @@ func validate(cfg *types.AppConfig) error {
 	case "strict", "permissive":
 	default:
 		return fmt.Errorf("api.websocket.origin_check must be 'strict' or 'permissive', got %q", cfg.API.WebSocket.OriginCheck)
+	}
+	switch cfg.MCP.Transport {
+	case "stdio", "sse":
+	default:
+		return fmt.Errorf("mcp.transport must be 'stdio' or 'sse', got %q", cfg.MCP.Transport)
+	}
+	if cfg.MCP.CacheTTL.AsDuration() <= 0 {
+		return errors.New("mcp.cache_ttl must be > 0")
 	}
 	return nil
 }
