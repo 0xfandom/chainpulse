@@ -6,8 +6,9 @@
 // processor -> ClickHouse -> Redis -> API pipeline.
 //
 // Usage:
-//   docker compose up -d --build
-//   go test -tags integration ./test/integration/...
+//
+//	docker compose up -d --build
+//	go test -tags integration ./test/integration/...
 package integration
 
 import (
