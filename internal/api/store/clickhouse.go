@@ -91,6 +91,25 @@ GROUP BY chain_id, token
 HAVING sum(balance_delta) != 0
 ORDER BY chain_id, token`
 
+	sqlLatestBlockByChain = `
+SELECT chain_id, max(block_number) AS latest_block, max(timestamp) AS latest_ts
+FROM (
+    SELECT chain_id, block_number, timestamp FROM token_transfers WHERE chain_id = ?
+    UNION ALL
+    SELECT chain_id, block_number, timestamp FROM defi_events     WHERE chain_id = ?
+)
+GROUP BY chain_id`
+
+	sqlLatestBlocksAllChains = `
+SELECT chain_id, max(block_number) AS latest_block, max(timestamp) AS latest_ts
+FROM (
+    SELECT chain_id, block_number, timestamp FROM token_transfers
+    UNION ALL
+    SELECT chain_id, block_number, timestamp FROM defi_events
+)
+GROUP BY chain_id
+ORDER BY chain_id`
+
 	sqlChainRecentBlocks = `
 SELECT chain_id, block_number, count() AS event_count, max(timestamp) AS latest_ts
 FROM (
@@ -150,6 +169,15 @@ type ProtocolStat struct {
 	EventCount  uint64    `json:"event_count"`
 	UniqueUsers uint64    `json:"unique_users"`
 	LastSeen    time.Time `json:"last_seen"`
+}
+
+// LatestBlockRow is the (chain_id, block, timestamp) tuple for the most
+// recently indexed block on a chain. Returned by LatestBlock and
+// LatestBlocksAllChains.
+type LatestBlockRow struct {
+	ChainID     uint64    `json:"chain_id"`
+	BlockNumber uint64    `json:"latest_block"`
+	LatestTS    time.Time `json:"latest_timestamp"`
 }
 
 // BlockSummary is a single indexed block with the count of events seen.
@@ -376,6 +404,43 @@ func (s *ReadStore) ProtocolStats(ctx context.Context, protocol string) ([]Proto
 		var r ProtocolStat
 		if err := rows.Scan(&r.ChainID, &r.Protocol, &r.EventCount, &r.UniqueUsers, &r.LastSeen); err != nil {
 			return nil, fmt.Errorf("protocol stats scan: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// LatestBlock returns the most recently indexed block for one chain.
+// Returns (nil, nil) when nothing has been indexed for that chain yet.
+func (s *ReadStore) LatestBlock(ctx context.Context, chainID uint64) (*LatestBlockRow, error) {
+	rows, err := s.conn.Query(ctx, sqlLatestBlockByChain, chainID, chainID)
+	if err != nil {
+		return nil, fmt.Errorf("latest block: %w", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return nil, rows.Err()
+	}
+	var r LatestBlockRow
+	if err := rows.Scan(&r.ChainID, &r.BlockNumber, &r.LatestTS); err != nil {
+		return nil, fmt.Errorf("latest block scan: %w", err)
+	}
+	return &r, rows.Err()
+}
+
+// LatestBlocksAllChains returns the most recently indexed block per
+// chain currently in storage.
+func (s *ReadStore) LatestBlocksAllChains(ctx context.Context) ([]LatestBlockRow, error) {
+	rows, err := s.conn.Query(ctx, sqlLatestBlocksAllChains)
+	if err != nil {
+		return nil, fmt.Errorf("latest blocks: %w", err)
+	}
+	defer rows.Close()
+	var out []LatestBlockRow
+	for rows.Next() {
+		var r LatestBlockRow
+		if err := rows.Scan(&r.ChainID, &r.BlockNumber, &r.LatestTS); err != nil {
+			return nil, fmt.Errorf("latest blocks scan: %w", err)
 		}
 		out = append(out, r)
 	}

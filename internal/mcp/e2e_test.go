@@ -55,8 +55,9 @@ func buildFullServer(t *testing.T) *mcp.Server {
 	tools.RegisterToken(reg, deps)
 	tools.RegisterDeFi(reg, deps)
 	tools.RegisterWhale(reg, deps)
-	if reg.Len() != 7 {
-		t.Fatalf("expected 7 tools, got %d", reg.Len())
+	tools.RegisterChain(reg, deps)
+	if reg.Len() != 8 {
+		t.Fatalf("expected 8 tools, got %d", reg.Len())
 	}
 	return mcp.NewServer(reg)
 }
@@ -135,7 +136,7 @@ func TestE2E_StdioFullHandshake(t *testing.T) {
 	wantNames := []string{
 		"get_wallet_positions", "get_wallet_balances", "get_wallet_history",
 		"get_token_transfers", "get_defi_positions", "get_protocol_stats",
-		"get_whale_activity",
+		"get_whale_activity", "get_latest_block",
 	}
 	for _, name := range wantNames {
 		if !strings.Contains(string(listJSON), name) {

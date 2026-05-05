@@ -78,6 +78,7 @@ func run(configPath string) error {
 	tools.RegisterToken(reg, deps)
 	tools.RegisterDeFi(reg, deps)
 	tools.RegisterWhale(reg, deps)
+	tools.RegisterChain(reg, deps)
 
 	server := mcp.NewServer(reg)
 	server.Info = mcp.ServerInfo{Name: "chainpulse", Version: version}
