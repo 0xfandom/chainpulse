@@ -111,3 +111,41 @@ func (c *ReadCache) GetBalances(ctx context.Context, wallet string, chainID uint
 	}
 	return out, nil
 }
+
+// GetAllBalances scans every cached chain for the wallet and returns a
+// {chain_id -> {token -> amount}} map. Empty outer map (not nil) when
+// nothing is cached.
+func (c *ReadCache) GetAllBalances(ctx context.Context, wallet string) (map[uint64]map[string]string, error) {
+	pattern := fmt.Sprintf("balance:%s:*:*", strings.ToLower(wallet))
+	out := map[uint64]map[string]string{}
+	iter := c.client.Scan(ctx, 0, pattern, 100).Iterator()
+	for iter.Next(ctx) {
+		key := iter.Val()
+		// balance:<wallet>:<chain>:<token>
+		parts := strings.Split(key, ":")
+		if len(parts) != 4 {
+			continue
+		}
+		var chainID uint64
+		if _, err := fmt.Sscan(parts[2], &chainID); err != nil {
+			continue
+		}
+		amount, err := c.client.HGet(ctx, key, "amount").Result()
+		if errors.Is(err, redis.Nil) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		bucket, ok := out[chainID]
+		if !ok {
+			bucket = map[string]string{}
+			out[chainID] = bucket
+		}
+		bucket[parts[3]] = amount
+	}
+	if err := iter.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
