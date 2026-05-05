@@ -21,6 +21,9 @@ coverage.html
 *.pem
 *.key
 
+# Local runtime config (copy from config.example.toml; references env vars)
+config/config.toml
+
 # OS
 .DS_Store
 Thumbs.db

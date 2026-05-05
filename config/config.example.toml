@@ -56,13 +56,88 @@ transport    = "sse"             # "stdio" | "sse" — stdio = Claude Desktop, s
 cache_ttl    = "60s"              # Redis TTL for tool-call results
 bearer_token = "${MCP_BEARER_TOKEN}"  # empty = SSE runs unauthenticated; set when exposed
 
-# One [[chains]] block per chain. Day 1 = Base only.
+# One [[chains]] block per chain. Comment out blocks you don't need.
+# `confirmations` is the reorg-safety window — set higher on chains with
+# probabilistic finality (PoS Polygon) or known reorg patterns (BSC).
+# `start_block = 0` means "start from latest head."
+
 [[chains]]
 chain_id      = 8453
 name          = "base"
 rpc_wss       = "${BASE_WSS_URL}"
 rpc_http      = "${BASE_HTTP_URL}"
-start_block   = 0           # 0 = start from latest head
-confirmations = 2           # blocks to wait before processing (reorg safety)
-# Optional: monitored contract whitelist. Empty = all contracts.
+start_block   = 0
+confirmations = 2
+contracts     = []  # empty = all contracts; pass an allowlist to scope
+
+[[chains]]
+chain_id      = 1
+name          = "ethereum"
+rpc_wss       = "${ETH_WSS_URL}"
+rpc_http      = "${ETH_HTTP_URL}"
+start_block   = 0
+confirmations = 4
+contracts     = []
+
+[[chains]]
+chain_id      = 42161
+name          = "arbitrum"
+rpc_wss       = "${ARB_WSS_URL}"
+rpc_http      = "${ARB_HTTP_URL}"
+start_block   = 0
+confirmations = 2
+contracts     = []
+
+[[chains]]
+chain_id      = 10
+name          = "optimism"
+rpc_wss       = "${OP_WSS_URL}"
+rpc_http      = "${OP_HTTP_URL}"
+start_block   = 0
+confirmations = 2
+contracts     = []
+
+[[chains]]
+chain_id      = 137
+name          = "polygon"
+rpc_wss       = "${POLY_WSS_URL}"
+rpc_http      = "${POLY_HTTP_URL}"
+start_block   = 0
+confirmations = 32
+contracts     = []
+
+[[chains]]
+chain_id      = 56
+name          = "bsc"
+rpc_wss       = "${BSC_WSS_URL}"
+rpc_http      = "${BSC_HTTP_URL}"
+start_block   = 0
+confirmations = 15
+contracts     = []
+
+[[chains]]
+chain_id      = 43114
+name          = "avalanche"
+rpc_wss       = "${AVAX_WSS_URL}"
+rpc_http      = "${AVAX_HTTP_URL}"
+start_block   = 0
+confirmations = 2
+contracts     = []
+
+[[chains]]
+chain_id      = 534352
+name          = "scroll"
+rpc_wss       = "${SCROLL_WSS_URL}"
+rpc_http      = "${SCROLL_HTTP_URL}"
+start_block   = 0
+confirmations = 2
+contracts     = []
+
+[[chains]]
+chain_id      = 324
+name          = "zksync"
+rpc_wss       = "${ZKSYNC_WSS_URL}"
+rpc_http      = "${ZKSYNC_HTTP_URL}"
+start_block   = 0
+confirmations = 2
 contracts     = []
