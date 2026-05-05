@@ -127,7 +127,7 @@ func TestCacheWriter_InvalidatePositions(t *testing.T) {
 	}
 	// unrelated wallet — must survive
 	_ = w.SetPosition(context.Background(), &types.WalletPosition{
-		Wallet: common.HexToAddress("0xdddddddddddddddddddddddddddddddddddddddd"),
+		Wallet:  common.HexToAddress("0xdddddddddddddddddddddddddddddddddddddddd"),
 		ChainID: 1, Protocol: "aave_v3", PositionType: "supply", Token: tokenA,
 	})
 
