@@ -48,6 +48,14 @@ WHERE protocol = ? AND timestamp >= now() - INTERVAL 24 HOUR
 GROUP BY chain_id, protocol
 ORDER BY chain_id`
 
+	sqlTokenTransfersByAddress = `
+SELECT chain_id, block_number, tx_hash, log_index,
+       token, from_addr, to_addr, amount, timestamp
+FROM token_transfers
+WHERE token = ? OR from_addr = ? OR to_addr = ?
+ORDER BY timestamp DESC
+LIMIT ?`
+
 	sqlChainRecentBlocks = `
 SELECT chain_id, block_number, count() AS event_count, max(timestamp) AS latest_ts
 FROM (
@@ -216,6 +224,29 @@ func (s *ReadStore) TokenTransfers(ctx context.Context, token string, limit int)
 		if err := rows.Scan(&r.ChainID, &r.BlockNumber, &r.TxHash, &r.LogIndex,
 			&r.Token, &r.FromAddr, &r.ToAddr, &r.Amount, &r.Timestamp); err != nil {
 			return nil, fmt.Errorf("token transfers scan: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// TokenTransfersByAddress returns recent transfers where the address
+// appears as the token contract, the sender, or the recipient. Used by
+// the MCP get_token_transfers tool which accepts either a wallet or a
+// token contract.
+func (s *ReadStore) TokenTransfersByAddress(ctx context.Context, address string, limit int) ([]TransferRow, error) {
+	rows, err := s.conn.Query(ctx, sqlTokenTransfersByAddress, address, address, address, limit)
+	if err != nil {
+		return nil, fmt.Errorf("token transfers by address: %w", err)
+	}
+	defer rows.Close()
+
+	var out []TransferRow
+	for rows.Next() {
+		var r TransferRow
+		if err := rows.Scan(&r.ChainID, &r.BlockNumber, &r.TxHash, &r.LogIndex,
+			&r.Token, &r.FromAddr, &r.ToAddr, &r.Amount, &r.Timestamp); err != nil {
+			return nil, fmt.Errorf("token transfers by address scan: %w", err)
 		}
 		out = append(out, r)
 	}
