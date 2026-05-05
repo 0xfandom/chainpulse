@@ -67,6 +67,103 @@ services:
       timeout: 5s
       retries: 12
 
+  indexer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: indexer
+      args:
+        VERSION: ${VERSION:-dev}
+    image: chainpulse/indexer:${VERSION:-dev}
+    container_name: chainpulse-indexer
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./config/config.docker.toml:/etc/chainpulse/config.toml:ro
+    expose:
+      - "9100"
+
+  processor:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: processor
+      args:
+        VERSION: ${VERSION:-dev}
+    image: chainpulse/processor:${VERSION:-dev}
+    container_name: chainpulse-processor
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      kafka:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./config/config.docker.toml:/etc/chainpulse/config.toml:ro
+    expose:
+      - "9101"
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: api
+      args:
+        VERSION: ${VERSION:-dev}
+    image: chainpulse/api:${VERSION:-dev}
+    container_name: chainpulse-api
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    expose:
+      - "9102"
+    volumes:
+      - ./config/config.docker.toml:/etc/chainpulse/config.toml:ro
+
+  mcp:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: mcp
+      args:
+        VERSION: ${VERSION:-dev}
+    image: chainpulse/mcp:${VERSION:-dev}
+    container_name: chainpulse-mcp
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+    expose:
+      - "9103"
+    volumes:
+      - ./config/config.docker.toml:/etc/chainpulse/config.toml:ro
+
 volumes:
   kafka_data:
   clickhouse_data:

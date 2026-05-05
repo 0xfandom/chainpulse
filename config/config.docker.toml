@@ -1,0 +1,62 @@
+# Compose-targeted config. Hostnames resolve via docker network DNS.
+# Secrets injected through .env (loaded by each service via env_file).
+
+[app]
+log_level    = "info"
+metrics_addr = ":9100"  # overridden per service via CHAINPULSE_METRICS_ADDR if needed
+
+[kafka]
+brokers                = ["kafka:9092"]
+topic_raw_events       = "raw_events"
+topic_decoded_events   = "decoded_events"
+topic_positions_update = "positions_update"
+client_id              = "chainpulse"
+
+[clickhouse]
+dsn            = "clickhouse://default:@clickhouse:9000/chainpulse"
+database       = "chainpulse"
+batch_size     = 1000
+batch_interval = "1s"
+
+[redis]
+addr        = "redis:6379"
+password    = ""
+db          = 0
+default_ttl = "60s"
+
+[processor]
+consumer_group = "chainpulse-processor"
+max_in_flight  = 256
+
+[api]
+addr            = ":8080"
+grpc_addr       = ":8081"
+request_timeout = "10s"
+shutdown_drain  = "15s"
+
+[api.cors]
+allowed_origins   = ["*"]
+allow_credentials = false
+
+[api.rate_limit]
+per_ip_per_minute = 100
+burst             = 20
+
+[api.websocket]
+read_buffer_bytes  = 4096
+write_buffer_bytes = 4096
+origin_check       = "permissive"
+
+[mcp]
+addr      = ":3001"
+transport = "sse"
+cache_ttl = "60s"
+
+[[chains]]
+chain_id      = 8453
+name          = "base"
+rpc_wss       = "${BASE_WSS_URL}"
+rpc_http      = "${BASE_HTTP_URL}"
+start_block   = 0
+confirmations = 2
+contracts     = []
