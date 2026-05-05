@@ -125,6 +125,42 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 	if cfg.Processor.MaxInFlight != 256 {
 		t.Errorf("MaxInFlight = %d, want 256", cfg.Processor.MaxInFlight)
 	}
+	if cfg.API.Addr != ":8080" {
+		t.Errorf("API.Addr default = %q", cfg.API.Addr)
+	}
+	if cfg.API.GRPCAddr != ":8081" {
+		t.Errorf("API.GRPCAddr default = %q", cfg.API.GRPCAddr)
+	}
+	if got := cfg.API.RequestTimeout.AsDuration(); got != 10*time.Second {
+		t.Errorf("API.RequestTimeout = %v", got)
+	}
+	if cfg.API.RateLimit.PerIPPerMinute != 100 {
+		t.Errorf("rate_limit.per_ip_per_minute = %d", cfg.API.RateLimit.PerIPPerMinute)
+	}
+	if cfg.API.RateLimit.Burst != 20 {
+		t.Errorf("rate_limit.burst = %d", cfg.API.RateLimit.Burst)
+	}
+	if cfg.API.WebSocket.OriginCheck != "strict" {
+		t.Errorf("origin_check default = %q", cfg.API.WebSocket.OriginCheck)
+	}
+}
+
+func TestLoad_APIInvalidOriginCheck(t *testing.T) {
+	t.Setenv("TEST_WSS", "wss://example/ws")
+	t.Setenv("TEST_HTTP", "https://example/http")
+	body := validConfigBody + `
+[api.websocket]
+origin_check = "wide-open"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for invalid origin_check")
+	}
 }
 
 func TestLoad_OverridesDefaults(t *testing.T) {

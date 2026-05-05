@@ -29,6 +29,25 @@ default_ttl = "60s"          # cache TTL for wallet positions / balances
 consumer_group = "chainpulse-processor"
 max_in_flight  = 256
 
+[api]
+addr            = ":8080"     # Gin REST listener
+grpc_addr       = ":8081"     # gRPC listener
+request_timeout = "10s"       # per-request handler timeout
+shutdown_drain  = "15s"       # graceful shutdown drain window
+
+[api.cors]
+allowed_origins   = ["*"]      # exact origins or "*"
+allow_credentials = false      # set true only with explicit origins
+
+[api.rate_limit]
+per_ip_per_minute = 100        # 0 disables; tested in production with 100
+burst             = 20
+
+[api.websocket]
+read_buffer_bytes  = 4096
+write_buffer_bytes = 4096
+origin_check       = "strict"  # "strict" | "permissive"
+
 # One [[chains]] block per chain. Day 1 = Base only.
 [[chains]]
 chain_id      = 8453
