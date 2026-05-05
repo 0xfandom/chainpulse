@@ -3,6 +3,9 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"time"
+
+	"github.com/0xfandom/chainpulse/internal/monitor"
 )
 
 // ProtocolVersion is the MCP protocol revision this server implements.
@@ -124,23 +127,33 @@ type toolsCallContent struct {
 func (s *Server) handleToolsCall(ctx context.Context, req *Request) *Response {
 	var p toolsCallParams
 	if err := json.Unmarshal(req.Params, &p); err != nil {
-		return errorResponse(req.ID, newError(CodeInvalidParams, "Invalid params: "+err.Error(), nil))
+		return errorResponse(req.ID, ErrInvalidParams(err.Error(), nil))
 	}
 	if p.Name == "" {
-		return errorResponse(req.ID, newError(CodeInvalidParams, "Invalid params: tool name required", nil))
+		return errorResponse(req.ID, ErrInvalidParams("tool name required", nil))
 	}
-	handler := s.Registry.Lookup(p.Name)
-	if handler == nil {
-		return errorResponse(req.ID, newError(CodeInvalidParams, "Unknown tool: "+p.Name, nil))
+	entry := s.Registry.lookupEntry(p.Name)
+	if entry == nil {
+		monitor.ObserveMCPToolCall(p.Name, monitor.MCPStatusValidationError, 0)
+		return errorResponse(req.ID, ErrInvalidParams("unknown tool: "+p.Name, nil))
 	}
-	result, err := handler(ctx, p.Arguments)
+	if vErr := validateArgs(entry.schema, p.Arguments); vErr != nil {
+		monitor.ObserveMCPToolCall(p.Name, monitor.MCPStatusValidationError, 0)
+		return errorResponse(req.ID, vErr)
+	}
+	start := time.Now()
+	result, err := entry.handler(ctx, p.Arguments)
+	dur := time.Since(start)
 	if err != nil {
-		return errorResponse(req.ID, newError(CodeInternalError, err.Error(), nil))
+		monitor.ObserveMCPToolCall(p.Name, monitor.MCPStatusError, dur)
+		return errorResponse(req.ID, ErrInternal(err.Error()))
 	}
 	encoded, marshalErr := json.Marshal(result)
 	if marshalErr != nil {
-		return errorResponse(req.ID, newError(CodeInternalError, "encode result: "+marshalErr.Error(), nil))
+		monitor.ObserveMCPToolCall(p.Name, monitor.MCPStatusError, dur)
+		return errorResponse(req.ID, ErrInternal("encode result: "+marshalErr.Error()))
 	}
+	monitor.ObserveMCPToolCall(p.Name, monitor.MCPStatusOK, dur)
 	return resultResponse(req.ID, toolsCallResult{
 		Content: []toolsCallContent{{Type: "text", Text: string(encoded)}},
 	})

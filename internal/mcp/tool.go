@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // ToolDefinition is the schema entry returned by tools/list. JSON shape
@@ -20,25 +22,31 @@ type ToolDefinition struct {
 // response's content[0].text field by the server.
 type ToolHandler func(ctx context.Context, params json.RawMessage) (any, error)
 
+// toolEntry bundles a registered tool's definition, handler, and the
+// precompiled JSON Schema used to validate tools/call arguments.
+type toolEntry struct {
+	def     ToolDefinition
+	handler ToolHandler
+	schema  *jsonschema.Schema
+}
+
 // Registry maps tool names to definitions + handlers. Iteration order
 // (List) is preserved so tools/list output is deterministic.
 type Registry struct {
-	mu       sync.RWMutex
-	order    []string
-	defs     map[string]ToolDefinition
-	handlers map[string]ToolHandler
+	mu      sync.RWMutex
+	order   []string
+	entries map[string]*toolEntry
 }
 
 // NewRegistry returns an empty Registry.
 func NewRegistry() *Registry {
-	return &Registry{
-		defs:     make(map[string]ToolDefinition),
-		handlers: make(map[string]ToolHandler),
-	}
+	return &Registry{entries: make(map[string]*toolEntry)}
 }
 
-// Register adds a tool. Returns an error if name is empty, schema is nil,
-// or the name is already registered.
+// Register adds a tool. Compiles the input schema at registration so a
+// malformed schema fails fast at boot rather than at first call. Returns
+// an error if name is empty, schema is nil/invalid, handler is nil, or
+// the name is already registered.
 func (r *Registry) Register(def ToolDefinition, handler ToolHandler) error {
 	if def.Name == "" {
 		return fmt.Errorf("tool name must not be empty")
@@ -49,13 +57,16 @@ func (r *Registry) Register(def ToolDefinition, handler ToolHandler) error {
 	if def.InputSchema == nil {
 		return fmt.Errorf("tool %q: inputSchema must not be nil", def.Name)
 	}
+	compiled, err := compileSchema(def.Name, def.InputSchema)
+	if err != nil {
+		return fmt.Errorf("tool %q: %w", def.Name, err)
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, exists := r.defs[def.Name]; exists {
+	if _, exists := r.entries[def.Name]; exists {
 		return fmt.Errorf("tool %q: already registered", def.Name)
 	}
-	r.defs[def.Name] = def
-	r.handlers[def.Name] = handler
+	r.entries[def.Name] = &toolEntry{def: def, handler: handler, schema: compiled}
 	r.order = append(r.order, def.Name)
 	return nil
 }
@@ -73,7 +84,7 @@ func (r *Registry) List() []ToolDefinition {
 	defer r.mu.RUnlock()
 	out := make([]ToolDefinition, 0, len(r.order))
 	for _, name := range r.order {
-		out = append(out, r.defs[name])
+		out = append(out, r.entries[name].def)
 	}
 	return out
 }
@@ -82,7 +93,18 @@ func (r *Registry) List() []ToolDefinition {
 func (r *Registry) Lookup(name string) ToolHandler {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.handlers[name]
+	if e, ok := r.entries[name]; ok {
+		return e.handler
+	}
+	return nil
+}
+
+// lookupEntry returns the full entry (definition + handler + schema) for
+// internal dispatch.
+func (r *Registry) lookupEntry(name string) *toolEntry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.entries[name]
 }
 
 // Len returns the number of registered tools.
