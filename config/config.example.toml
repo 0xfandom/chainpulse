@@ -1,5 +1,5 @@
 # ChainPulse configuration — copy to config.toml and edit.
-# Secrets (RPC keys) live in .env — referenced here as ${VAR}.
+# Secrets (RPC keys, DB DSNs) live in .env — referenced here as ${VAR}.
 
 [app]
 log_level = "info"          # debug | info | warn | error
@@ -11,6 +11,23 @@ topic_raw_events = "raw_events"
 topic_decoded_events = "decoded_events"
 topic_positions_update = "positions_update"
 client_id = "chainpulse"
+
+[clickhouse]
+# native protocol DSN, e.g. clickhouse://default:@localhost:9000/chainpulse
+dsn            = "${CLICKHOUSE_DSN}"
+database       = "chainpulse"
+batch_size     = 1000        # flush after N rows
+batch_interval = "1s"        # flush at least every N (Go duration)
+
+[redis]
+addr        = "${REDIS_ADDR}"
+password    = ""
+db          = 0
+default_ttl = "60s"          # cache TTL for wallet positions / balances
+
+[processor]
+consumer_group = "chainpulse-processor"
+max_in_flight  = 256
 
 # One [[chains]] block per chain. Day 1 = Base only.
 [[chains]]
