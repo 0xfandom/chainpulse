@@ -46,11 +46,11 @@ var (
 		Buckets: prometheus.ExponentialBuckets(0.0005, 2, 12),
 	})
 
-	// KafkaConsumerLag is set by the consumer once per second from the
-	// underlying reader's stats. Labeled by topic and partition.
-	KafkaConsumerLag = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "kafka_consumer_lag",
-		Help: "Current consumer lag in messages, per topic and partition.",
+	// ProcessorKafkaLagMessages is set by the consumer once per second
+	// from the underlying reader's stats. Labeled by topic and partition.
+	ProcessorKafkaLagMessages = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "processor_kafka_lag_messages",
+		Help: "Current Kafka consumer lag in messages, per topic and partition.",
 	}, []string{"topic", "partition"})
 )
 
@@ -90,5 +90,5 @@ func ObserveRedisWrite(d time.Duration) {
 
 // SetKafkaConsumerLag updates the consumer lag gauge for a partition.
 func SetKafkaConsumerLag(topic, partition string, lag float64) {
-	KafkaConsumerLag.WithLabelValues(topic, partition).Set(lag)
+	ProcessorKafkaLagMessages.WithLabelValues(topic, partition).Set(lag)
 }
