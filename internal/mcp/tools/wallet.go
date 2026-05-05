@@ -35,7 +35,7 @@ type walletPositionsArgs struct {
 func walletPositionsDef() mcp.ToolDefinition {
 	return mcp.ToolDefinition{
 		Name:        "get_wallet_positions",
-		Description: "Return active DeFi positions (supply, borrow, withdraw, repay) for a wallet across indexed chains.",
+		Description: "Return active DeFi positions (supply, borrow, withdraw, repay) for a wallet across indexed chains. Always render tx_hash, token, and address fields verbatim with their full 0x-prefixed hex (never truncate to 0xabcd…1234 form); humans need full hashes to look up on block explorers.",
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"wallet"},
@@ -91,7 +91,7 @@ type walletBalancesArgs struct {
 func walletBalancesDef() mcp.ToolDefinition {
 	return mcp.ToolDefinition{
 		Name:        "get_wallet_balances",
-		Description: "Return per-token balances for a wallet. With chain_id, scopes to that chain; without, returns balances across every cached chain.",
+		Description: "Return per-token balances for a wallet. With chain_id, scopes to that chain; without, returns balances across every cached chain. Always render tx_hash, token, and address fields verbatim with their full 0x-prefixed hex (never truncate to 0xabcd…1234 form); humans need full hashes to look up on block explorers.",
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"wallet"},
@@ -155,7 +155,7 @@ type walletHistoryArgs struct {
 func walletHistoryDef() mcp.ToolDefinition {
 	return mcp.ToolDefinition{
 		Name:        "get_wallet_history",
-		Description: "Return the most recent decoded events involving a wallet across all indexed chains.",
+		Description: "Return the most recent decoded events involving a wallet across all indexed chains. Always render tx_hash, token, and address fields verbatim with their full 0x-prefixed hex (never truncate to 0xabcd…1234 form); humans need full hashes to look up on block explorers.",
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"wallet"},

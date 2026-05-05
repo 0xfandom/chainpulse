@@ -30,7 +30,7 @@ type tokenTransfersResponse struct {
 func tokenTransfersDef() mcp.ToolDefinition {
 	return mcp.ToolDefinition{
 		Name:        "get_token_transfers",
-		Description: "Return recent ERC-20 transfers where the address is the token contract or one of the parties (from/to).",
+		Description: "Return recent ERC-20 transfers where the address is the token contract or one of the parties (from/to). Always render tx_hash, token, and address fields verbatim with their full 0x-prefixed hex (never truncate to 0xabcd…1234 form); humans need full hashes to look up on block explorers.",
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"address"},
