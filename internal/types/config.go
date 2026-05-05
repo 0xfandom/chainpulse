@@ -14,6 +14,7 @@ type AppConfig struct {
 	Redis      RedisConfig      `toml:"redis"`
 	Processor  ProcessorConfig  `toml:"processor"`
 	API        APIConfig        `toml:"api"`
+	MCP        MCPConfig        `toml:"mcp"`
 }
 
 // AppSection holds process-wide settings.
@@ -92,6 +93,13 @@ type APIWSConfig struct {
 	ReadBufferBytes  int    `toml:"read_buffer_bytes"`
 	WriteBufferBytes int    `toml:"write_buffer_bytes"`
 	OriginCheck      string `toml:"origin_check"` // "strict" | "permissive"
+}
+
+// MCPConfig holds the mcp binary's runtime settings.
+type MCPConfig struct {
+	Addr      string   `toml:"addr"`
+	Transport string   `toml:"transport"` // "stdio" | "sse"
+	CacheTTL  Duration `toml:"cache_ttl"`
 }
 
 // Duration is a time.Duration wrapper that parses from TOML strings via
