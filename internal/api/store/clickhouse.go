@@ -19,14 +19,14 @@ const (
 SELECT chain_id, block_number, tx_hash, log_index,
        protocol, event_type, user_addr, token_a, amount_a, params, timestamp
 FROM defi_events
-WHERE user_addr = ?
+WHERE lowerUTF8(user_addr) = ?
 ORDER BY timestamp DESC
 LIMIT ?`
 
 	sqlWalletDefiPositions = `
 SELECT chain_id, protocol, event_type, user_addr, token_a, amount_a, params, timestamp
 FROM defi_events
-WHERE user_addr = ? AND event_type IN ('supply', 'borrow', 'withdraw', 'repay')
+WHERE lowerUTF8(user_addr) = ? AND event_type IN ('supply', 'borrow', 'withdraw', 'repay')
 ORDER BY timestamp DESC
 LIMIT ?`
 
@@ -34,7 +34,7 @@ LIMIT ?`
 SELECT chain_id, block_number, tx_hash, log_index,
        token, from_addr, to_addr, amount, timestamp
 FROM token_transfers
-WHERE token = ?
+WHERE lowerUTF8(token) = ?
 ORDER BY timestamp DESC
 LIMIT ?`
 
@@ -52,7 +52,7 @@ ORDER BY chain_id`
 SELECT chain_id, block_number, tx_hash, log_index,
        token, from_addr, to_addr, amount, timestamp
 FROM token_transfers
-WHERE token = ? OR from_addr = ? OR to_addr = ?
+WHERE lowerUTF8(token) = ? OR lowerUTF8(from_addr) = ? OR lowerUTF8(to_addr) = ?
 ORDER BY timestamp DESC
 LIMIT ?`
 
@@ -74,6 +74,22 @@ WHERE chain_id = ?
   AND toUInt256OrZero(amount) >= toUInt256OrZero(?)
 ORDER BY toUInt256OrZero(amount) DESC, timestamp DESC
 LIMIT ?`
+
+	sqlWalletBalancesByChain = `
+SELECT lowerUTF8(token) AS token, toString(sum(balance_delta)) AS balance
+FROM wallet_balances
+WHERE lowerUTF8(wallet) = ? AND chain_id = ?
+GROUP BY token
+HAVING sum(balance_delta) != 0
+ORDER BY token`
+
+	sqlWalletBalancesAllChains = `
+SELECT chain_id, lowerUTF8(token) AS token, toString(sum(balance_delta)) AS balance
+FROM wallet_balances
+WHERE lowerUTF8(wallet) = ?
+GROUP BY chain_id, token
+HAVING sum(balance_delta) != 0
+ORDER BY chain_id, token`
 
 	sqlChainRecentBlocks = `
 SELECT chain_id, block_number, count() AS event_count, max(timestamp) AS latest_ts
@@ -296,6 +312,53 @@ func (s *ReadStore) WhaleTransfers(ctx context.Context, hours int, minAmount str
 			return nil, fmt.Errorf("whale transfers scan: %w", err)
 		}
 		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// WalletBalancesByChain reads the wallet_balances MV (Int256 deltas)
+// scoped to one chain and aggregates per-token. Authoritative source —
+// no int64 clamping.
+func (s *ReadStore) WalletBalancesByChain(ctx context.Context, wallet string, chainID uint64) (map[string]string, error) {
+	rows, err := s.conn.Query(ctx, sqlWalletBalancesByChain, wallet, chainID)
+	if err != nil {
+		return nil, fmt.Errorf("wallet balances by chain: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[string]string{}
+	for rows.Next() {
+		var token, balance string
+		if err := rows.Scan(&token, &balance); err != nil {
+			return nil, fmt.Errorf("wallet balances scan: %w", err)
+		}
+		out[token] = balance
+	}
+	return out, rows.Err()
+}
+
+// WalletBalancesAllChains aggregates balances across every indexed chain
+// for the wallet.
+func (s *ReadStore) WalletBalancesAllChains(ctx context.Context, wallet string) (map[uint64]map[string]string, error) {
+	rows, err := s.conn.Query(ctx, sqlWalletBalancesAllChains, wallet)
+	if err != nil {
+		return nil, fmt.Errorf("wallet balances all chains: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[uint64]map[string]string{}
+	for rows.Next() {
+		var chainID uint64
+		var token, balance string
+		if err := rows.Scan(&chainID, &token, &balance); err != nil {
+			return nil, fmt.Errorf("wallet balances all chains scan: %w", err)
+		}
+		bucket, ok := out[chainID]
+		if !ok {
+			bucket = map[string]string{}
+			out[chainID] = bucket
+		}
+		bucket[token] = balance
 	}
 	return out, rows.Err()
 }

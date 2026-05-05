@@ -119,15 +119,12 @@ func walletBalancesHandler(deps *Deps) mcp.ToolHandler {
 			return nil, err
 		}
 		a.Wallet = strings.ToLower(a.Wallet)
-		if deps.Cache == nil {
-			if a.ChainID != 0 {
-				return walletBalancesResponse{Wallet: a.Wallet, ChainID: a.ChainID, Balances: map[string]string{}}, nil
-			}
-			return walletBalancesResponse{Wallet: a.Wallet, ByChain: map[uint64]map[string]string{}}, nil
-		}
+		// Read from ClickHouse wallet_balances MV (Int256 deltas) — no int64
+		// clamp. The Redis HINCRBY-backed cache is unreliable for tokens
+		// with > int64 raw amounts; documented Day-2 limit.
 		return cached(ctx, deps, "get_wallet_balances", argsAsMap(params), func() (walletBalancesResponse, error) {
 			if a.ChainID != 0 {
-				balances, err := deps.Cache.GetBalances(ctx, a.Wallet, a.ChainID)
+				balances, err := deps.Store.WalletBalancesByChain(ctx, a.Wallet, a.ChainID)
 				if err != nil {
 					return walletBalancesResponse{}, err
 				}
@@ -136,7 +133,7 @@ func walletBalancesHandler(deps *Deps) mcp.ToolHandler {
 				}
 				return walletBalancesResponse{Wallet: a.Wallet, ChainID: a.ChainID, Balances: balances}, nil
 			}
-			byChain, err := deps.Cache.GetAllBalances(ctx, a.Wallet)
+			byChain, err := deps.Store.WalletBalancesAllChains(ctx, a.Wallet)
 			if err != nil {
 				return walletBalancesResponse{}, err
 			}
