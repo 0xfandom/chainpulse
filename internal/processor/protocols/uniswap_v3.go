@@ -148,14 +148,14 @@ func (d *UniswapV3Decoder) decodeSwap(event *types.ChainEvent, pool string) (*ty
 		Protocol:   d.Name(),
 		EventType:  "swap",
 		Params: map[string]interface{}{
-			"sender":          sender.Hex(),
-			"recipient":       recipient.Hex(),
-			"amount0":         bigString(amount0),
-			"amount1":         bigString(amount1),
-			"sqrt_price_x96":  bigString(sqrtPriceX96),
-			"liquidity":       bigString(liquidity),
-			"tick":            bigString(tick),
-			"pool":            pool,
+			"sender":         sender.Hex(),
+			"recipient":      recipient.Hex(),
+			"amount0":        bigString(amount0),
+			"amount1":        bigString(amount1),
+			"sqrt_price_x96": bigString(sqrtPriceX96),
+			"liquidity":      bigString(liquidity),
+			"tick":           bigString(tick),
+			"pool":           pool,
 		},
 	}, nil
 }
