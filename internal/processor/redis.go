@@ -82,7 +82,18 @@ func (w *CacheWriter) IncrBalance(ctx context.Context, chainID uint64, wallet, t
 			Msg("incr balance clamped to int64; large-value path not yet implemented")
 		monitor.IncProcessorError(monitor.ProcErrRedisWrite)
 	}
-	return w.client.HIncrBy(ctx, key, "amount", d).Err()
+	// Swallow Redis HINCRBY overflow ("ERR increment or decrement would
+	// overflow") so a single oversized cumulative balance doesn't stall
+	// the consumer. Authoritative balance lives in ClickHouse
+	// wallet_balances MV (Int256). Day-2 follow-up: replace HINCRBY with
+	// a Lua script doing int256 math.
+	if err := w.client.HIncrBy(ctx, key, "amount", d).Err(); err != nil {
+		if strings.Contains(err.Error(), "overflow") {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // SetPosition writes the JSON-encoded position under the canonical key
