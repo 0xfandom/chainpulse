@@ -71,6 +71,17 @@ func run(configPath string) error {
 		logger.Info().Str("addr", addr).Msg("metrics server listening")
 	}
 
+	if addr := cfg.App.HealthAddr; addr != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := monitor.ServeHealth(ctx, addr); err != nil {
+				logger.Error().Err(err).Str("addr", addr).Msg("health server stopped")
+			}
+		}()
+		logger.Info().Str("addr", addr).Msg("health server listening")
+	}
+
 	decoder := ingestion.NewABIDecoder()
 
 	for _, ch := range cfg.Chains {
@@ -89,7 +100,7 @@ func run(configPath string) error {
 	<-ctx.Done()
 	logger.Info().Msg("shutdown signal received, stopping listeners")
 
-	wg.Wait()
+	monitor.WaitWithTimeout(&wg, cfg.App.ShutdownTimeout.AsDuration(), logger, "listeners")
 
 	if err := producer.Close(); err != nil {
 		logger.Error().Err(err).Msg("kafka producer close failed")

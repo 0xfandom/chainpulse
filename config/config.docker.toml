@@ -2,8 +2,10 @@
 # Secrets injected through .env (loaded by each service via env_file).
 
 [app]
-log_level    = "info"
-metrics_addr = "${METRICS_ADDR}"  # set per service via compose environment
+log_level        = "info"
+metrics_addr     = "${METRICS_ADDR}"  # set per service via compose environment
+health_addr      = ":9180"
+shutdown_timeout = "30s"
 
 [kafka]
 brokers                = ["kafka:9092"]

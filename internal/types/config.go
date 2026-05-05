@@ -19,8 +19,10 @@ type AppConfig struct {
 
 // AppSection holds process-wide settings.
 type AppSection struct {
-	LogLevel    string `toml:"log_level"`
-	MetricsAddr string `toml:"metrics_addr"`
+	LogLevel        string   `toml:"log_level"`
+	MetricsAddr     string   `toml:"metrics_addr"`
+	HealthAddr      string   `toml:"health_addr"`
+	ShutdownTimeout Duration `toml:"shutdown_timeout"`
 }
 
 // KafkaConfig holds connection and topic settings for the Kafka pipeline.

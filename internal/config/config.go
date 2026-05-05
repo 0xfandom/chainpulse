@@ -35,6 +35,8 @@ const (
 	defaultMCPAddr            = ":3001"
 	defaultMCPTransport       = "sse"
 	defaultMCPCacheTTL        = 60 * time.Second
+	defaultHealthAddr         = ":9180"
+	defaultShutdownTimeout    = 30 * time.Second
 )
 
 // envVarPattern matches ${VAR_NAME} placeholders. Names accept letters,
@@ -134,6 +136,12 @@ func applyDefaults(cfg *types.AppConfig) {
 	}
 	if cfg.MCP.CacheTTL == 0 {
 		cfg.MCP.CacheTTL = types.Duration(defaultMCPCacheTTL)
+	}
+	if cfg.App.HealthAddr == "" {
+		cfg.App.HealthAddr = defaultHealthAddr
+	}
+	if cfg.App.ShutdownTimeout == 0 {
+		cfg.App.ShutdownTimeout = types.Duration(defaultShutdownTimeout)
 	}
 }
 
