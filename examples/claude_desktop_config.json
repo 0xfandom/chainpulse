@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "chainpulse": {
+      "command": "/usr/local/bin/chainpulse-mcp",
+      "args": ["--config", "/etc/chainpulse/config.toml"],
+      "env": {
+        "CLICKHOUSE_DSN": "clickhouse://default:@localhost:9000/chainpulse",
+        "REDIS_ADDR": "localhost:6379"
+      }
+    }
+  }
+}
