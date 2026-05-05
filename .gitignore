@@ -1,0 +1,43 @@
+# Binaries (built artifacts — anchor at repo root so cmd/indexer/ etc are not ignored)
+/bin/
+/dist/
+/chainpulse
+/indexer
+/processor
+/api
+/mcp
+*.exe
+*.test
+*.out
+
+# Go
+vendor/
+coverage.out
+coverage.html
+
+# Env / secrets
+.env
+.env.local
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker volumes
+clickhouse_data/
+kafka_data/
+redis_data/
+prometheus_data/
+grafana_data/
+
+# Logs
+*.log
+logs/
