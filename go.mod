@@ -4,6 +4,8 @@ go 1.24.0
 
 require (
 	github.com/ethereum/go-ethereum v1.17.2
+	github.com/joho/godotenv v1.5.1
+	github.com/pelletier/go-toml/v2 v2.3.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/zerolog v1.35.1
 	github.com/segmentio/kafka-go v0.4.51
