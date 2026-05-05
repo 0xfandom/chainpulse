@@ -56,6 +56,25 @@ WHERE token = ? OR from_addr = ? OR to_addr = ?
 ORDER BY timestamp DESC
 LIMIT ?`
 
+	sqlWhaleTransfers = `
+SELECT chain_id, block_number, tx_hash, log_index,
+       token, from_addr, to_addr, amount, timestamp
+FROM token_transfers
+WHERE timestamp >= now() - INTERVAL ? HOUR
+  AND toUInt256OrZero(amount) >= toUInt256OrZero(?)
+ORDER BY toUInt256OrZero(amount) DESC, timestamp DESC
+LIMIT ?`
+
+	sqlWhaleTransfersByChain = `
+SELECT chain_id, block_number, tx_hash, log_index,
+       token, from_addr, to_addr, amount, timestamp
+FROM token_transfers
+WHERE chain_id = ?
+  AND timestamp >= now() - INTERVAL ? HOUR
+  AND toUInt256OrZero(amount) >= toUInt256OrZero(?)
+ORDER BY toUInt256OrZero(amount) DESC, timestamp DESC
+LIMIT ?`
+
 	sqlChainRecentBlocks = `
 SELECT chain_id, block_number, count() AS event_count, max(timestamp) AS latest_ts
 FROM (
@@ -247,6 +266,34 @@ func (s *ReadStore) TokenTransfersByAddress(ctx context.Context, address string,
 		if err := rows.Scan(&r.ChainID, &r.BlockNumber, &r.TxHash, &r.LogIndex,
 			&r.Token, &r.FromAddr, &r.ToAddr, &r.Amount, &r.Timestamp); err != nil {
 			return nil, fmt.Errorf("token transfers by address scan: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// WhaleTransfers returns the largest token transfers in the trailing
+// hours window where amount >= minAmount (decimal-string uint256). When
+// chainID is non-zero results are scoped to that chain.
+func (s *ReadStore) WhaleTransfers(ctx context.Context, hours int, minAmount string, chainID uint64, limit int) ([]TransferRow, error) {
+	var rows driver.Rows
+	var err error
+	if chainID == 0 {
+		rows, err = s.conn.Query(ctx, sqlWhaleTransfers, hours, minAmount, limit)
+	} else {
+		rows, err = s.conn.Query(ctx, sqlWhaleTransfersByChain, chainID, hours, minAmount, limit)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("whale transfers: %w", err)
+	}
+	defer rows.Close()
+
+	var out []TransferRow
+	for rows.Next() {
+		var r TransferRow
+		if err := rows.Scan(&r.ChainID, &r.BlockNumber, &r.TxHash, &r.LogIndex,
+			&r.Token, &r.FromAddr, &r.ToAddr, &r.Amount, &r.Timestamp); err != nil {
+			return nil, fmt.Errorf("whale transfers scan: %w", err)
 		}
 		out = append(out, r)
 	}
