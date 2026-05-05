@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	chainpulselog "github.com/0xfandom/chainpulse/internal/log"
+	"github.com/0xfandom/chainpulse/internal/monitor"
 )
 
 const (
@@ -116,9 +117,11 @@ func (t *SSETransport) handleSSE(w http.ResponseWriter, r *http.Request) {
 		closed: make(chan struct{}),
 	}
 	t.sessions.add(sess)
+	monitor.IncMCPSession(1)
 	defer func() {
 		sess.closeOnce()
 		t.sessions.remove(sess.id)
+		monitor.IncMCPSession(-1)
 	}()
 
 	endpoint := "/messages?session=" + sess.id
