@@ -47,6 +47,12 @@ func init() {
 		protocols.CompoundV3SupplySig:   "Supply",
 		protocols.CompoundV3WithdrawSig: "Withdraw",
 		protocols.CompoundV3AbsorbSig:   "AbsorbCollateral",
+
+		// Lido stETH events
+		protocols.LidoSubmittedSig: "Submitted",
+
+		// Curve Stableswap V1 events
+		protocols.CurveTokenExchangeSig: "CurveTokenExchange",
 	}
 }
 
