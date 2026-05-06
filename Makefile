@@ -1,4 +1,4 @@
-.PHONY: help build test lint fmt vet tidy run-indexer run-processor run-api run-mcp docker-up docker-down clean
+.PHONY: help build test lint fmt vet tidy run-indexer run-processor run-api run-mcp docker-up docker-down clean proto
 
 GO ?= go
 BIN_DIR := bin
@@ -17,6 +17,7 @@ help:
 	@echo "  run-mcp         run mcp locally"
 	@echo "  docker-up       docker compose up -d"
 	@echo "  docker-down     docker compose down"
+	@echo "  proto           regenerate gRPC pb files (requires protoc + protoc-gen-go[-grpc])"
 	@echo "  clean           remove ./bin"
 
 build:
@@ -58,6 +59,15 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+proto:
+	protoc \
+	  --proto_path=internal/api/grpc/proto \
+	  --go_out=internal/api/grpc/pb \
+	  --go_opt=paths=source_relative \
+	  --go-grpc_out=internal/api/grpc/pb \
+	  --go-grpc_opt=paths=source_relative \
+	  internal/api/grpc/proto/chainpulse.proto
 
 clean:
 	rm -rf $(BIN_DIR)
