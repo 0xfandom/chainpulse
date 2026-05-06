@@ -8,11 +8,21 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/pelletier/go-toml/v2"
 
 	"github.com/0xfandom/chainpulse/internal/types"
+)
+
+const (
+	defaultClickHouseDatabase = "chainpulse"
+	defaultClickHouseBatch    = 1000
+	defaultClickHouseInterval = time.Second
+	defaultRedisTTL           = 60 * time.Second
+	defaultConsumerGroup      = "chainpulse-processor"
+	defaultMaxInFlight        = 256
 )
 
 // envVarPattern matches ${VAR_NAME} placeholders. Names accept letters,
@@ -47,11 +57,36 @@ func Load(path string) (*types.AppConfig, error) {
 		return nil, fmt.Errorf("parse toml %s: %w", path, err)
 	}
 
+	applyDefaults(&cfg)
+
 	if err := validate(&cfg); err != nil {
 		return nil, fmt.Errorf("validate config %s: %w", path, err)
 	}
 
 	return &cfg, nil
+}
+
+// applyDefaults fills in zero-valued fields with their documented defaults.
+// Required fields (DSN, addresses) are left empty so validate can complain.
+func applyDefaults(cfg *types.AppConfig) {
+	if cfg.ClickHouse.Database == "" {
+		cfg.ClickHouse.Database = defaultClickHouseDatabase
+	}
+	if cfg.ClickHouse.BatchSize == 0 {
+		cfg.ClickHouse.BatchSize = defaultClickHouseBatch
+	}
+	if cfg.ClickHouse.BatchInterval == 0 {
+		cfg.ClickHouse.BatchInterval = types.Duration(defaultClickHouseInterval)
+	}
+	if cfg.Redis.DefaultTTL == 0 {
+		cfg.Redis.DefaultTTL = types.Duration(defaultRedisTTL)
+	}
+	if cfg.Processor.ConsumerGroup == "" {
+		cfg.Processor.ConsumerGroup = defaultConsumerGroup
+	}
+	if cfg.Processor.MaxInFlight == 0 {
+		cfg.Processor.MaxInFlight = defaultMaxInFlight
+	}
 }
 
 // Substitute replaces every ${VAR} reference in src with the value of the
@@ -94,6 +129,18 @@ func validate(cfg *types.AppConfig) error {
 		if c.RPCWSS == "" {
 			return fmt.Errorf("chains[%d].rpc_wss must be set (chain=%s)", i, c.Name)
 		}
+	}
+	if cfg.ClickHouse.DSN == "" {
+		return errors.New("clickhouse.dsn must be set")
+	}
+	if cfg.ClickHouse.BatchSize <= 0 {
+		return errors.New("clickhouse.batch_size must be > 0")
+	}
+	if cfg.ClickHouse.BatchInterval.AsDuration() <= 0 {
+		return errors.New("clickhouse.batch_interval must be > 0")
+	}
+	if cfg.Redis.Addr == "" {
+		return errors.New("redis.addr must be set")
 	}
 	return nil
 }

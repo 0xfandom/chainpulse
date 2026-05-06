@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSubstitute_Replaces(t *testing.T) {
@@ -47,13 +48,7 @@ func TestSubstitute_NoPlaceholders(t *testing.T) {
 	}
 }
 
-func TestLoad_ValidConfig(t *testing.T) {
-	t.Setenv("TEST_WSS", "wss://example/ws")
-	t.Setenv("TEST_HTTP", "https://example/http")
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.toml")
-	body := `
+const validConfigBody = `
 [app]
 log_level = "info"
 metrics_addr = ":9100"
@@ -63,13 +58,26 @@ brokers = ["localhost:9092"]
 topic_raw_events = "raw_events"
 client_id = "chainpulse"
 
+[clickhouse]
+dsn = "clickhouse://default:@localhost:9000/chainpulse"
+
+[redis]
+addr = "localhost:6379"
+
 [[chains]]
 chain_id = 8453
 name = "base"
 rpc_wss = "${TEST_WSS}"
 rpc_http = "${TEST_HTTP}"
 `
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+
+func TestLoad_ValidConfig(t *testing.T) {
+	t.Setenv("TEST_WSS", "wss://example/ws")
+	t.Setenv("TEST_HTTP", "https://example/http")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(validConfigBody), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -85,18 +93,165 @@ rpc_http = "${TEST_HTTP}"
 	}
 }
 
-func TestLoad_MissingRequiredField(t *testing.T) {
+func TestLoad_AppliesDefaults(t *testing.T) {
+	t.Setenv("TEST_WSS", "wss://example/ws")
+	t.Setenv("TEST_HTTP", "https://example/http")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(validConfigBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ClickHouse.Database != "chainpulse" {
+		t.Errorf("ClickHouse.Database = %q, want chainpulse", cfg.ClickHouse.Database)
+	}
+	if cfg.ClickHouse.BatchSize != 1000 {
+		t.Errorf("BatchSize = %d, want 1000", cfg.ClickHouse.BatchSize)
+	}
+	if got := cfg.ClickHouse.BatchInterval.AsDuration(); got != time.Second {
+		t.Errorf("BatchInterval = %v, want 1s", got)
+	}
+	if got := cfg.Redis.DefaultTTL.AsDuration(); got != 60*time.Second {
+		t.Errorf("Redis.DefaultTTL = %v, want 60s", got)
+	}
+	if cfg.Processor.ConsumerGroup != "chainpulse-processor" {
+		t.Errorf("ConsumerGroup = %q", cfg.Processor.ConsumerGroup)
+	}
+	if cfg.Processor.MaxInFlight != 256 {
+		t.Errorf("MaxInFlight = %d, want 256", cfg.Processor.MaxInFlight)
+	}
+}
+
+func TestLoad_OverridesDefaults(t *testing.T) {
+	t.Setenv("TEST_WSS", "wss://example/ws")
+	t.Setenv("TEST_HTTP", "https://example/http")
+
+	body := `
+[app]
+log_level = "info"
+
+[kafka]
+brokers = ["localhost:9092"]
+topic_raw_events = "raw_events"
+
+[clickhouse]
+dsn = "clickhouse://override:@host:9000/x"
+batch_size = 50
+batch_interval = "250ms"
+
+[redis]
+addr = "localhost:6379"
+
+[[chains]]
+chain_id = 8453
+name = "base"
+rpc_wss = "${TEST_WSS}"
+rpc_http = "${TEST_HTTP}"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ClickHouse.BatchSize != 50 {
+		t.Errorf("BatchSize override failed: %d", cfg.ClickHouse.BatchSize)
+	}
+	if got := cfg.ClickHouse.BatchInterval.AsDuration(); got != 250*time.Millisecond {
+		t.Errorf("BatchInterval override failed: %v", got)
+	}
+}
+
+func TestLoad_MissingChainRPC(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.toml")
 	body := `
 [kafka]
 brokers = ["localhost:9092"]
 topic_raw_events = "raw_events"
+
+[clickhouse]
+dsn = "clickhouse://default:@host:9000/x"
+
+[redis]
+addr = "localhost:6379"
 `
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Load(path); err == nil {
-		t.Fatal("expected validation error, got nil")
+		t.Fatal("expected validation error for missing chains, got nil")
+	}
+}
+
+func TestLoad_MissingClickHouseDSN(t *testing.T) {
+	t.Setenv("TEST_WSS", "wss://example/ws")
+	t.Setenv("TEST_HTTP", "https://example/http")
+
+	body := `
+[kafka]
+brokers = ["localhost:9092"]
+topic_raw_events = "raw_events"
+
+[redis]
+addr = "localhost:6379"
+
+[[chains]]
+chain_id = 8453
+name = "base"
+rpc_wss = "${TEST_WSS}"
+rpc_http = "${TEST_HTTP}"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.toml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for missing clickhouse.dsn")
+	}
+	if !strings.Contains(err.Error(), "clickhouse.dsn") {
+		t.Errorf("error should mention clickhouse.dsn, got %v", err)
+	}
+}
+
+func TestLoad_MissingRedisAddr(t *testing.T) {
+	t.Setenv("TEST_WSS", "wss://example/ws")
+	t.Setenv("TEST_HTTP", "https://example/http")
+
+	body := `
+[kafka]
+brokers = ["localhost:9092"]
+topic_raw_events = "raw_events"
+
+[clickhouse]
+dsn = "clickhouse://default:@host:9000/x"
+
+[[chains]]
+chain_id = 8453
+name = "base"
+rpc_wss = "${TEST_WSS}"
+rpc_http = "${TEST_HTTP}"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.toml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for missing redis.addr")
+	}
+	if !strings.Contains(err.Error(), "redis.addr") {
+		t.Errorf("error should mention redis.addr, got %v", err)
 	}
 }
