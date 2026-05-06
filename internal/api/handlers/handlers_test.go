@@ -150,20 +150,23 @@ func TestWalletBalances_RequiresChainID(t *testing.T) {
 	}
 }
 
-func TestWalletBalances_FromCache(t *testing.T) {
-	r, mr := newHandlerHarness(t, &fakeQueryConn{})
+func TestWalletBalances_EmptyResultShape(t *testing.T) {
+	// Handler now reads from ClickHouse wallet_balances MV; the fake conn
+	// returns no rows, so we assert the empty-result shape only. End-to-end
+	// data path is covered by live integration runs.
+	r, _ := newHandlerHarness(t, &fakeQueryConn{})
 
 	wallet := "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	mr.HSet("balance:"+wallet+":1:0xtoken1", "amount", "1234")
-
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/wallet/"+wallet+"/balances?chain_id=1", nil)
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d", w.Code)
 	}
-	if !strings.Contains(w.Body.String(), "1234") {
-		t.Errorf("body missing balance: %s", w.Body.String())
+	for _, want := range []string{`"chain_id":1`, `"balances":{}`, `"wallet":"` + wallet + `"`} {
+		if !strings.Contains(w.Body.String(), want) {
+			t.Errorf("body missing %q: %s", want, w.Body.String())
+		}
 	}
 }
 

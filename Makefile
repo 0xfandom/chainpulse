@@ -1,4 +1,4 @@
-.PHONY: help build test lint fmt vet tidy run-indexer run-processor run-api run-mcp docker-up docker-down clean proto integration-test
+.PHONY: help build test lint fmt vet tidy run-indexer run-processor run-api run-mcp docker-up docker-down clean proto integration-test demo demo-down demo-logs
 
 GO ?= go
 BIN_DIR := bin
@@ -19,6 +19,9 @@ help:
 	@echo "  docker-down     docker compose down"
 	@echo "  proto           regenerate gRPC pb files (requires protoc + protoc-gen-go[-grpc])"
 	@echo "  integration-test  spin up compose, run end-to-end test, tear down"
+	@echo "  demo            bring up full stack and print copy-paste demo commands"
+	@echo "  demo-down       tear demo stack down"
+	@echo "  demo-logs       tail logs of the four ChainPulse binaries"
 	@echo "  clean           remove ./bin"
 
 build:
@@ -75,3 +78,12 @@ clean:
 
 integration-test:
 	./test/integration/run.sh
+
+demo:
+	./scripts/demo.sh
+
+demo-down:
+	docker compose down
+
+demo-logs:
+	docker compose logs -f indexer processor api mcp

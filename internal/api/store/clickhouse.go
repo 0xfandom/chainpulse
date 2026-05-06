@@ -19,14 +19,14 @@ const (
 SELECT chain_id, block_number, tx_hash, log_index,
        protocol, event_type, user_addr, token_a, amount_a, params, timestamp
 FROM defi_events
-WHERE user_addr = ?
+WHERE lowerUTF8(user_addr) = ?
 ORDER BY timestamp DESC
 LIMIT ?`
 
 	sqlWalletDefiPositions = `
 SELECT chain_id, protocol, event_type, user_addr, token_a, amount_a, params, timestamp
 FROM defi_events
-WHERE user_addr = ? AND event_type IN ('supply', 'borrow', 'withdraw', 'repay')
+WHERE lowerUTF8(user_addr) = ? AND event_type IN ('supply', 'borrow', 'withdraw', 'repay')
 ORDER BY timestamp DESC
 LIMIT ?`
 
@@ -34,7 +34,7 @@ LIMIT ?`
 SELECT chain_id, block_number, tx_hash, log_index,
        token, from_addr, to_addr, amount, timestamp
 FROM token_transfers
-WHERE token = ?
+WHERE lowerUTF8(token) = ?
 ORDER BY timestamp DESC
 LIMIT ?`
 
@@ -52,7 +52,7 @@ ORDER BY chain_id`
 SELECT chain_id, block_number, tx_hash, log_index,
        token, from_addr, to_addr, amount, timestamp
 FROM token_transfers
-WHERE token = ? OR from_addr = ? OR to_addr = ?
+WHERE lowerUTF8(token) = ? OR lowerUTF8(from_addr) = ? OR lowerUTF8(to_addr) = ?
 ORDER BY timestamp DESC
 LIMIT ?`
 
@@ -74,6 +74,41 @@ WHERE chain_id = ?
   AND toUInt256OrZero(amount) >= toUInt256OrZero(?)
 ORDER BY toUInt256OrZero(amount) DESC, timestamp DESC
 LIMIT ?`
+
+	sqlWalletBalancesByChain = `
+SELECT lowerUTF8(token) AS token, toString(sum(balance_delta)) AS balance
+FROM wallet_balances
+WHERE lowerUTF8(wallet) = ? AND chain_id = ?
+GROUP BY token
+HAVING sum(balance_delta) != 0
+ORDER BY token`
+
+	sqlWalletBalancesAllChains = `
+SELECT chain_id, lowerUTF8(token) AS token, toString(sum(balance_delta)) AS balance
+FROM wallet_balances
+WHERE lowerUTF8(wallet) = ?
+GROUP BY chain_id, token
+HAVING sum(balance_delta) != 0
+ORDER BY chain_id, token`
+
+	sqlLatestBlockByChain = `
+SELECT chain_id, max(block_number) AS latest_block, max(timestamp) AS latest_ts
+FROM (
+    SELECT chain_id, block_number, timestamp FROM token_transfers WHERE chain_id = ?
+    UNION ALL
+    SELECT chain_id, block_number, timestamp FROM defi_events     WHERE chain_id = ?
+)
+GROUP BY chain_id`
+
+	sqlLatestBlocksAllChains = `
+SELECT chain_id, max(block_number) AS latest_block, max(timestamp) AS latest_ts
+FROM (
+    SELECT chain_id, block_number, timestamp FROM token_transfers
+    UNION ALL
+    SELECT chain_id, block_number, timestamp FROM defi_events
+)
+GROUP BY chain_id
+ORDER BY chain_id`
 
 	sqlChainRecentBlocks = `
 SELECT chain_id, block_number, count() AS event_count, max(timestamp) AS latest_ts
@@ -134,6 +169,15 @@ type ProtocolStat struct {
 	EventCount  uint64    `json:"event_count"`
 	UniqueUsers uint64    `json:"unique_users"`
 	LastSeen    time.Time `json:"last_seen"`
+}
+
+// LatestBlockRow is the (chain_id, block, timestamp) tuple for the most
+// recently indexed block on a chain. Returned by LatestBlock and
+// LatestBlocksAllChains.
+type LatestBlockRow struct {
+	ChainID     uint64    `json:"chain_id"`
+	BlockNumber uint64    `json:"latest_block"`
+	LatestTS    time.Time `json:"latest_timestamp"`
 }
 
 // BlockSummary is a single indexed block with the count of events seen.
@@ -300,6 +344,53 @@ func (s *ReadStore) WhaleTransfers(ctx context.Context, hours int, minAmount str
 	return out, rows.Err()
 }
 
+// WalletBalancesByChain reads the wallet_balances MV (Int256 deltas)
+// scoped to one chain and aggregates per-token. Authoritative source —
+// no int64 clamping.
+func (s *ReadStore) WalletBalancesByChain(ctx context.Context, wallet string, chainID uint64) (map[string]string, error) {
+	rows, err := s.conn.Query(ctx, sqlWalletBalancesByChain, wallet, chainID)
+	if err != nil {
+		return nil, fmt.Errorf("wallet balances by chain: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[string]string{}
+	for rows.Next() {
+		var token, balance string
+		if err := rows.Scan(&token, &balance); err != nil {
+			return nil, fmt.Errorf("wallet balances scan: %w", err)
+		}
+		out[token] = balance
+	}
+	return out, rows.Err()
+}
+
+// WalletBalancesAllChains aggregates balances across every indexed chain
+// for the wallet.
+func (s *ReadStore) WalletBalancesAllChains(ctx context.Context, wallet string) (map[uint64]map[string]string, error) {
+	rows, err := s.conn.Query(ctx, sqlWalletBalancesAllChains, wallet)
+	if err != nil {
+		return nil, fmt.Errorf("wallet balances all chains: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[uint64]map[string]string{}
+	for rows.Next() {
+		var chainID uint64
+		var token, balance string
+		if err := rows.Scan(&chainID, &token, &balance); err != nil {
+			return nil, fmt.Errorf("wallet balances all chains scan: %w", err)
+		}
+		bucket, ok := out[chainID]
+		if !ok {
+			bucket = map[string]string{}
+			out[chainID] = bucket
+		}
+		bucket[token] = balance
+	}
+	return out, rows.Err()
+}
+
 // ProtocolStats returns 24h activity per chain for a protocol.
 func (s *ReadStore) ProtocolStats(ctx context.Context, protocol string) ([]ProtocolStat, error) {
 	rows, err := s.conn.Query(ctx, sqlProtocolStats, protocol)
@@ -313,6 +404,43 @@ func (s *ReadStore) ProtocolStats(ctx context.Context, protocol string) ([]Proto
 		var r ProtocolStat
 		if err := rows.Scan(&r.ChainID, &r.Protocol, &r.EventCount, &r.UniqueUsers, &r.LastSeen); err != nil {
 			return nil, fmt.Errorf("protocol stats scan: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// LatestBlock returns the most recently indexed block for one chain.
+// Returns (nil, nil) when nothing has been indexed for that chain yet.
+func (s *ReadStore) LatestBlock(ctx context.Context, chainID uint64) (*LatestBlockRow, error) {
+	rows, err := s.conn.Query(ctx, sqlLatestBlockByChain, chainID, chainID)
+	if err != nil {
+		return nil, fmt.Errorf("latest block: %w", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return nil, rows.Err()
+	}
+	var r LatestBlockRow
+	if err := rows.Scan(&r.ChainID, &r.BlockNumber, &r.LatestTS); err != nil {
+		return nil, fmt.Errorf("latest block scan: %w", err)
+	}
+	return &r, rows.Err()
+}
+
+// LatestBlocksAllChains returns the most recently indexed block per
+// chain currently in storage.
+func (s *ReadStore) LatestBlocksAllChains(ctx context.Context) ([]LatestBlockRow, error) {
+	rows, err := s.conn.Query(ctx, sqlLatestBlocksAllChains)
+	if err != nil {
+		return nil, fmt.Errorf("latest blocks: %w", err)
+	}
+	defer rows.Close()
+	var out []LatestBlockRow
+	for rows.Next() {
+		var r LatestBlockRow
+		if err := rows.Scan(&r.ChainID, &r.BlockNumber, &r.LatestTS); err != nil {
+			return nil, fmt.Errorf("latest blocks scan: %w", err)
 		}
 		out = append(out, r)
 	}

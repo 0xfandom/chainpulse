@@ -24,4 +24,5 @@ ENGINE = ReplacingMergeTree(block_number)
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (chain_id, protocol, block_number, log_index)
 TTL timestamp + INTERVAL 90 DAY
-SETTINGS index_granularity = 8192;
+SETTINGS index_granularity = 8192,
+         non_replicated_deduplication_window = 1000;

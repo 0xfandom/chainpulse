@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -25,12 +26,20 @@ const (
 
 // ChainListener subscribes to a single chain's WebSocket head stream,
 // fetches logs per block, decodes them, and publishes to Kafka.
+//
+// Reorg safety: emits a block only after `Confirmations` newer heads
+// arrive on top of it. With Confirmations = N, each new head H causes
+// blocks (lastEmitted, H-N] to be processed via HeaderByNumber. Blocks
+// at H-N are buried under N descendants and are very unlikely to be
+// reorged out. Confirmations = 0 disables the lag (head emits
+// immediately).
 type ChainListener struct {
-	cfg      types.ChainConfig
-	decoder  *ABIDecoder
-	producer *Producer
-	dialer   Dialer
-	log      zerolog.Logger
+	cfg         types.ChainConfig
+	decoder     *ABIDecoder
+	producer    *Producer
+	dialer      Dialer
+	log         zerolog.Logger
+	lastEmitted uint64 // last safe block published; 0 = uninitialized
 }
 
 // Dialer abstracts ethclient.DialContext so tests can inject a fake.
@@ -41,6 +50,7 @@ type Dialer func(ctx context.Context, url string) (EthClient, error)
 type EthClient interface {
 	SubscribeNewHead(ctx context.Context, ch chan<- *ethtypes.Header) (ethereum.Subscription, error)
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]ethtypes.Log, error)
+	HeaderByNumber(ctx context.Context, number *big.Int) (*ethtypes.Header, error)
 	Close()
 }
 
@@ -101,6 +111,11 @@ func (cl *ChainListener) Run(ctx context.Context) error {
 
 // runOnce executes a single dial + subscription session. Returns nil if
 // ctx is cancelled cleanly, or an error suitable for reconnection.
+//
+// Cursor lastEmitted is reset on each session: missed-block backfill on
+// reconnect is intentionally skipped to avoid re-emitting hours of
+// blocks if the listener was offline. Resume from the current safe head
+// instead.
 func (cl *ChainListener) runOnce(ctx context.Context) error {
 	client, err := cl.dialer(ctx, cl.cfg.RPCWSS)
 	if err != nil {
@@ -110,6 +125,8 @@ func (cl *ChainListener) runOnce(ctx context.Context) error {
 
 	cl.log.Info().Msg("connected to WebSocket")
 	monitor.SetListenerConnected(cl.cfg.Name, true)
+
+	cl.lastEmitted = 0
 
 	headers := make(chan *ethtypes.Header, 16)
 	sub, err := client.SubscribeNewHead(ctx, headers)
@@ -131,8 +148,52 @@ func (cl *ChainListener) runOnce(ctx context.Context) error {
 			if header == nil {
 				continue
 			}
-			cl.processBlock(ctx, client, header)
+			cl.onNewHead(ctx, client, header)
 		}
+	}
+}
+
+// onNewHead translates a fresh chain-head event into one or more
+// reorg-safe block emissions. For each block in (lastEmitted,
+// head-Confirmations] it fetches the block header (or reuses the
+// supplied head when Confirmations = 0) and routes it through
+// processBlock.
+func (cl *ChainListener) onNewHead(ctx context.Context, client EthClient, head *ethtypes.Header) {
+	if head.Number == nil {
+		return
+	}
+	headNum := head.Number.Uint64()
+	conf := cl.cfg.Confirmations
+	if headNum < conf {
+		return
+	}
+	safe := headNum - conf
+
+	if cl.lastEmitted == 0 {
+		// First head this session — start streaming from current safe
+		// forward; do not backfill arbitrarily deep history.
+		if safe == 0 {
+			cl.lastEmitted = 0
+			cl.processBlock(ctx, client, head)
+			return
+		}
+		cl.lastEmitted = safe - 1
+	}
+
+	for n := cl.lastEmitted + 1; n <= safe; n++ {
+		var bh *ethtypes.Header
+		if n == headNum {
+			bh = head
+		} else {
+			h, err := client.HeaderByNumber(ctx, new(big.Int).SetUint64(n))
+			if err != nil {
+				cl.log.Error().Err(err).Uint64(chainpulselog.FieldBlock, n).Msg("header by number failed")
+				return
+			}
+			bh = h
+		}
+		cl.processBlock(ctx, client, bh)
+		cl.lastEmitted = n
 	}
 }
 

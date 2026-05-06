@@ -4,7 +4,7 @@
 # binary into a distroless runtime image.
 
 # ---------- build ----------
-FROM golang:1.24-alpine AS build
+FROM golang:1.25-alpine AS build
 
 ARG VERSION=dev
 

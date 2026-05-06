@@ -97,6 +97,8 @@ func run(configPath string) error {
 		protocols.NewUniswapV3Decoder(),
 		protocols.NewAaveV3Decoder(),
 		protocols.NewCompoundV3Decoder(),
+		protocols.NewLidoDecoder(),
+		protocols.NewCurveDecoder(),
 	} {
 		if err := registry.Register(d); err != nil {
 			_ = prod.Close()
