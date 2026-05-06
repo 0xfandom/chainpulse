@@ -99,9 +99,10 @@ type APIWSConfig struct {
 
 // MCPConfig holds the mcp binary's runtime settings.
 type MCPConfig struct {
-	Addr      string   `toml:"addr"`
-	Transport string   `toml:"transport"` // "stdio" | "sse"
-	CacheTTL  Duration `toml:"cache_ttl"`
+	Addr        string   `toml:"addr"`
+	Transport   string   `toml:"transport"` // "stdio" | "sse"
+	CacheTTL    Duration `toml:"cache_ttl"`
+	BearerToken string   `toml:"bearer_token"` // empty = sse runs unauthenticated
 }
 
 // Duration is a time.Duration wrapper that parses from TOML strings via

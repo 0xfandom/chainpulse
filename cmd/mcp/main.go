@@ -124,6 +124,7 @@ func run(configPath string) error {
 			transportErr <- tr.Run(rootCtx)
 		case "sse":
 			tr := mcp.NewSSETransport(server, cfg.MCP.Addr)
+			tr.BearerToken = cfg.MCP.BearerToken
 			transportErr <- tr.Run(rootCtx)
 		default:
 			transportErr <- fmt.Errorf("unsupported transport %q", cfg.MCP.Transport)

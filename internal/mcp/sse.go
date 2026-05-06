@@ -2,11 +2,13 @@ package mcp
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -26,9 +28,14 @@ const (
 // SSETransport implements the MCP HTTP+SSE transport. Clients GET /sse to
 // open the event stream and POST /messages?session=<id> with JSON-RPC
 // frames; responses come back over the SSE stream.
+//
+// When BearerToken is non-empty, both routes require an Authorization
+// header of the form `Bearer <token>` and reject mismatches with 401.
+// Empty BearerToken disables auth and logs a warning at startup.
 type SSETransport struct {
-	Server *Server
-	Addr   string
+	Server      *Server
+	Addr        string
+	BearerToken string
 
 	sessions *sessionMap
 	srv      *http.Server
@@ -49,8 +56,8 @@ func (t *SSETransport) Run(ctx context.Context) error {
 		return errors.New("sse: nil server")
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sse", t.handleSSE)
-	mux.HandleFunc("/messages", t.handleMessages)
+	mux.HandleFunc("/sse", t.withAuth(t.handleSSE))
+	mux.HandleFunc("/messages", t.withAuth(t.handleMessages))
 
 	lis, err := net.Listen("tcp", t.Addr)
 	if err != nil {
@@ -65,7 +72,10 @@ func (t *SSETransport) Run(ctx context.Context) error {
 	t.started.Store(true)
 
 	l := chainpulselog.Component("mcp_sse")
-	l.Info().Str("addr", t.Addr).Msg("listening")
+	if t.BearerToken == "" {
+		l.Warn().Msg("bearer token not configured; SSE transport runs unauthenticated")
+	}
+	l.Info().Str("addr", t.Addr).Bool("auth", t.BearerToken != "").Msg("listening")
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- t.srv.Serve(lis) }()
@@ -90,6 +100,31 @@ func (t *SSETransport) Listener() net.Listener { return t.listener }
 
 // ActiveSessions reports the current subscriber count.
 func (t *SSETransport) ActiveSessions() int { return t.sessions.len() }
+
+// withAuth wraps an HTTP handler with bearer-token enforcement when one
+// is configured. Constant-time comparison avoids leaking timing on
+// brute-force attempts.
+func (t *SSETransport) withAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if t.BearerToken == "" {
+			next(w, r)
+			return
+		}
+		const prefix = "Bearer "
+		header := r.Header.Get("Authorization")
+		if !strings.HasPrefix(header, prefix) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		got := []byte(header[len(prefix):])
+		want := []byte(t.BearerToken)
+		if subtle.ConstantTimeCompare(got, want) != 1 {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
 
 // handleSSE upgrades the connection to a Server-Sent Events stream,
 // emits the session endpoint as the first event, then forwards every

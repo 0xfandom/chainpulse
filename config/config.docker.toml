@@ -50,9 +50,10 @@ write_buffer_bytes = 4096
 origin_check       = "permissive"
 
 [mcp]
-addr      = ":3001"
-transport = "sse"
-cache_ttl = "60s"
+addr         = ":3001"
+transport    = "sse"
+cache_ttl    = "60s"
+bearer_token = "${MCP_BEARER_TOKEN}"  # set in .env (empty string allowed)
 
 [[chains]]
 chain_id      = 8453
