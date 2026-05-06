@@ -48,6 +48,11 @@ read_buffer_bytes  = 4096
 write_buffer_bytes = 4096
 origin_check       = "strict"  # "strict" | "permissive"
 
+[mcp]
+addr      = ":3001"            # SSE transport listener (ignored when transport = stdio)
+transport = "sse"              # "stdio" | "sse" — stdio = Claude Desktop, sse = HTTP agents
+cache_ttl = "60s"              # Redis TTL for tool-call results
+
 # One [[chains]] block per chain. Day 1 = Base only.
 [[chains]]
 chain_id      = 8453

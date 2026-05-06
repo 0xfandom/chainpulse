@@ -45,11 +45,14 @@ func (f *fakeQueryConn) Close() error               { return nil }
 
 func TestReadStore_QueryConstants(t *testing.T) {
 	for name, q := range map[string]string{
-		"WalletHistory":       sqlWalletHistory,
-		"WalletDefiPositions": sqlWalletDefiPositions,
-		"TokenTransfers":      sqlTokenTransfers,
-		"ProtocolStats":       sqlProtocolStats,
-		"ChainRecentBlocks":   sqlChainRecentBlocks,
+		"WalletHistory":           sqlWalletHistory,
+		"WalletDefiPositions":     sqlWalletDefiPositions,
+		"TokenTransfers":          sqlTokenTransfers,
+		"TokenTransfersByAddress": sqlTokenTransfersByAddress,
+		"ProtocolStats":           sqlProtocolStats,
+		"ChainRecentBlocks":       sqlChainRecentBlocks,
+		"WhaleTransfers":          sqlWhaleTransfers,
+		"WhaleTransfersByChain":   sqlWhaleTransfersByChain,
 	} {
 		if !strings.Contains(strings.ToUpper(q), "SELECT") {
 			t.Errorf("%s missing SELECT", name)
@@ -57,6 +60,33 @@ func TestReadStore_QueryConstants(t *testing.T) {
 		if strings.Count(q, "?") == 0 {
 			t.Errorf("%s missing parameter placeholders", name)
 		}
+	}
+	for name, q := range map[string]string{
+		"WhaleTransfers":        sqlWhaleTransfers,
+		"WhaleTransfersByChain": sqlWhaleTransfersByChain,
+	} {
+		for _, frag := range []string{"INTERVAL", "toUInt256OrZero", "ORDER BY"} {
+			if !strings.Contains(q, frag) {
+				t.Errorf("%s missing fragment %q", name, frag)
+			}
+		}
+	}
+}
+
+func TestReadStore_WhaleQueriesRouteByChain(t *testing.T) {
+	conn := &fakeQueryConn{}
+	s := NewReadStore(conn)
+	if _, err := s.WhaleTransfers(context.Background(), 24, "1000", 0, 50); err != nil {
+		t.Fatalf("global: %v", err)
+	}
+	if conn.gotQuery != sqlWhaleTransfers {
+		t.Errorf("global query mismatch")
+	}
+	if _, err := s.WhaleTransfers(context.Background(), 24, "1000", 1, 50); err != nil {
+		t.Fatalf("by-chain: %v", err)
+	}
+	if conn.gotQuery != sqlWhaleTransfersByChain {
+		t.Errorf("by-chain query mismatch")
 	}
 }
 
