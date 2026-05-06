@@ -143,6 +143,65 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 	if cfg.API.WebSocket.OriginCheck != "strict" {
 		t.Errorf("origin_check default = %q", cfg.API.WebSocket.OriginCheck)
 	}
+	if cfg.MCP.Addr != ":3001" {
+		t.Errorf("MCP.Addr default = %q", cfg.MCP.Addr)
+	}
+	if cfg.MCP.Transport != "sse" {
+		t.Errorf("MCP.Transport default = %q", cfg.MCP.Transport)
+	}
+	if got := cfg.MCP.CacheTTL.AsDuration(); got != 60*time.Second {
+		t.Errorf("MCP.CacheTTL default = %v", got)
+	}
+}
+
+func TestLoad_MCPRejectsUnknownTransport(t *testing.T) {
+	t.Setenv("TEST_WSS", "wss://example/ws")
+	t.Setenv("TEST_HTTP", "https://example/http")
+	body := validConfigBody + `
+[mcp]
+transport = "websocket"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for invalid mcp.transport")
+	}
+	if !strings.Contains(err.Error(), "mcp.transport") {
+		t.Errorf("error should mention mcp.transport, got %v", err)
+	}
+}
+
+func TestLoad_MCPOverrides(t *testing.T) {
+	t.Setenv("TEST_WSS", "wss://example/ws")
+	t.Setenv("TEST_HTTP", "https://example/http")
+	body := validConfigBody + `
+[mcp]
+addr = ":4000"
+transport = "stdio"
+cache_ttl = "10s"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MCP.Addr != ":4000" {
+		t.Errorf("MCP.Addr override = %q", cfg.MCP.Addr)
+	}
+	if cfg.MCP.Transport != "stdio" {
+		t.Errorf("MCP.Transport override = %q", cfg.MCP.Transport)
+	}
+	if got := cfg.MCP.CacheTTL.AsDuration(); got != 10*time.Second {
+		t.Errorf("MCP.CacheTTL override = %v", got)
+	}
 }
 
 func TestLoad_APIInvalidOriginCheck(t *testing.T) {
