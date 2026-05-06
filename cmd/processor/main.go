@@ -140,6 +140,17 @@ func run(configPath string) error {
 		logger.Info().Str("addr", addr).Msg("metrics server listening")
 	}
 
+	if addr := cfg.App.HealthAddr; addr != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := monitor.ServeHealth(rootCtx, addr); err != nil {
+				logger.Error().Err(err).Str("addr", addr).Msg("health server stopped")
+			}
+		}()
+		logger.Info().Str("addr", addr).Msg("health server listening")
+	}
+
 	handler := func(ctx context.Context, e *types.ChainEvent) error {
 		decoded, err := registry.Decode(e)
 		if err != nil {
@@ -161,7 +172,8 @@ func run(configPath string) error {
 
 	logger.Info().Msg("shutdown signal received; flushing pipeline")
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownTimeout := cfg.App.ShutdownTimeout.AsDuration()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
 
 	logStep(logger, "consumer.Close", consumer.Close)
@@ -169,7 +181,7 @@ func run(configPath string) error {
 	logStep(logger, "producer.Close", prod.Close)
 	logStep(logger, "cache.Close", cache.Close)
 
-	wg.Wait()
+	monitor.WaitWithTimeout(&wg, shutdownTimeout, logger, "metrics+health")
 	logger.Info().Msg("processor stopped")
 	return nil
 }

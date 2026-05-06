@@ -1,4 +1,4 @@
-.PHONY: help build test lint fmt vet tidy run-indexer run-processor run-api run-mcp docker-up docker-down clean proto
+.PHONY: help build test lint fmt vet tidy run-indexer run-processor run-api run-mcp docker-up docker-down clean proto integration-test
 
 GO ?= go
 BIN_DIR := bin
@@ -18,6 +18,7 @@ help:
 	@echo "  docker-up       docker compose up -d"
 	@echo "  docker-down     docker compose down"
 	@echo "  proto           regenerate gRPC pb files (requires protoc + protoc-gen-go[-grpc])"
+	@echo "  integration-test  spin up compose, run end-to-end test, tear down"
 	@echo "  clean           remove ./bin"
 
 build:
@@ -71,3 +72,6 @@ proto:
 
 clean:
 	rm -rf $(BIN_DIR)
+
+integration-test:
+	./test/integration/run.sh
