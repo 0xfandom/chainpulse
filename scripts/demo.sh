@@ -13,17 +13,34 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
+# check_port_free errors only when the listener is foreign (not one of
+# our own ChainPulse compose containers). Re-running the script while
+# our stack is already up must not be flagged.
 check_port_free() {
   local port="$1"
   local label="$2"
-  if lsof -iTCP:"$port" -sTCP:LISTEN -n -P >/dev/null 2>&1; then
-    local pid
-    pid=$(lsof -tiTCP:"$port" -sTCP:LISTEN -n -P | head -1)
-    local cmd
-    cmd=$(ps -p "$pid" -o comm= 2>/dev/null || echo "?")
-    echo "ERROR: port $port ($label) held by pid $pid ($cmd). Stop it first."
-    return 1
+  local owner_pid owner_cmd
+  if ! lsof -iTCP:"$port" -sTCP:LISTEN -n -P >/dev/null 2>&1; then
+    return 0
   fi
+  owner_pid=$(lsof -tiTCP:"$port" -sTCP:LISTEN -n -P | head -1)
+  owner_cmd=$(ps -p "$owner_pid" -o comm= 2>/dev/null || echo "?")
+  # Docker Desktop forwards ports for our own containers via
+  # com.docker.backend — only complain if the bound port doesn't
+  # correspond to one of our chainpulse-* services.
+  if [[ "$owner_cmd" == *"com.docker"* ]]; then
+    local hit
+    hit=$(docker ps --format '{{.Names}} {{.Ports}}' | grep "0.0.0.0:${port}->" || true)
+    if [[ "$hit" == chainpulse-* ]]; then
+      return 0
+    fi
+    if [[ -n "$hit" ]]; then
+      echo "ERROR: port $port ($label) held by foreign container: $hit"
+      return 1
+    fi
+  fi
+  echo "ERROR: port $port ($label) held by pid $owner_pid ($owner_cmd). Stop it first."
+  return 1
 }
 
 echo "==> checking host ports"
@@ -33,7 +50,7 @@ check_port_free 8123 "clickhouse-http"
 check_port_free 6379 "redis"
 check_port_free 8080 "api-rest"
 check_port_free 8081 "api-grpc"
-check_port_free 3001 "mcp"
+check_port_free 3011 "mcp"
 check_port_free 9090 "prometheus"
 check_port_free 3000 "grafana"
 
@@ -74,7 +91,7 @@ ChainPulse demo stack ready.
 Services
   REST API           http://localhost:8080
   gRPC               localhost:8081
-  MCP (SSE)          http://localhost:3001
+  MCP (SSE)          http://localhost:3011
   Prometheus         http://localhost:9090
   Grafana            http://localhost:3000  (admin / admin)
 
@@ -87,7 +104,7 @@ Live WebSocket tail
   wscat -c ws://localhost:8080/v1/events/stream
 
 Add MCP server to Claude Code
-  claude mcp add chainpulse-local --transport http http://localhost:3001/sse
+  claude mcp add chainpulse-local --transport http http://localhost:3011/sse
 
 Sample MCP prompts (paste in Claude Code chat)
   Use chainpulse get_latest_block
