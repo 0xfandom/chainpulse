@@ -23,6 +23,15 @@ const (
 	defaultRedisTTL           = 60 * time.Second
 	defaultConsumerGroup      = "chainpulse-processor"
 	defaultMaxInFlight        = 256
+	defaultAPIAddr            = ":8080"
+	defaultAPIGRPCAddr        = ":8081"
+	defaultAPIRequestTimeout  = 10 * time.Second
+	defaultAPIShutdownDrain   = 15 * time.Second
+	defaultAPIRateLimit       = 100
+	defaultAPIBurst           = 20
+	defaultAPIWSReadBytes     = 4096
+	defaultAPIWSWriteBytes    = 4096
+	defaultAPIWSOriginCheck   = "strict"
 )
 
 // envVarPattern matches ${VAR_NAME} placeholders. Names accept letters,
@@ -87,6 +96,33 @@ func applyDefaults(cfg *types.AppConfig) {
 	if cfg.Processor.MaxInFlight == 0 {
 		cfg.Processor.MaxInFlight = defaultMaxInFlight
 	}
+	if cfg.API.Addr == "" {
+		cfg.API.Addr = defaultAPIAddr
+	}
+	if cfg.API.GRPCAddr == "" {
+		cfg.API.GRPCAddr = defaultAPIGRPCAddr
+	}
+	if cfg.API.RequestTimeout == 0 {
+		cfg.API.RequestTimeout = types.Duration(defaultAPIRequestTimeout)
+	}
+	if cfg.API.ShutdownDrain == 0 {
+		cfg.API.ShutdownDrain = types.Duration(defaultAPIShutdownDrain)
+	}
+	if cfg.API.RateLimit.PerIPPerMinute == 0 {
+		cfg.API.RateLimit.PerIPPerMinute = defaultAPIRateLimit
+	}
+	if cfg.API.RateLimit.Burst == 0 {
+		cfg.API.RateLimit.Burst = defaultAPIBurst
+	}
+	if cfg.API.WebSocket.ReadBufferBytes == 0 {
+		cfg.API.WebSocket.ReadBufferBytes = defaultAPIWSReadBytes
+	}
+	if cfg.API.WebSocket.WriteBufferBytes == 0 {
+		cfg.API.WebSocket.WriteBufferBytes = defaultAPIWSWriteBytes
+	}
+	if cfg.API.WebSocket.OriginCheck == "" {
+		cfg.API.WebSocket.OriginCheck = defaultAPIWSOriginCheck
+	}
 }
 
 // Substitute replaces every ${VAR} reference in src with the value of the
@@ -141,6 +177,20 @@ func validate(cfg *types.AppConfig) error {
 	}
 	if cfg.Redis.Addr == "" {
 		return errors.New("redis.addr must be set")
+	}
+	if cfg.API.Addr == "" {
+		return errors.New("api.addr must be set")
+	}
+	if cfg.API.RateLimit.PerIPPerMinute < 0 {
+		return errors.New("api.rate_limit.per_ip_per_minute must be >= 0")
+	}
+	if cfg.API.RateLimit.Burst < 0 {
+		return errors.New("api.rate_limit.burst must be >= 0")
+	}
+	switch cfg.API.WebSocket.OriginCheck {
+	case "strict", "permissive":
+	default:
+		return fmt.Errorf("api.websocket.origin_check must be 'strict' or 'permissive', got %q", cfg.API.WebSocket.OriginCheck)
 	}
 	return nil
 }
