@@ -61,7 +61,7 @@ func TestProcessorMetrics_RegisteredOnDefaultHandler(t *testing.T) {
 		"processor_consume_errors_total",
 		"clickhouse_batch_flush_seconds",
 		"redis_write_seconds",
-		"kafka_consumer_lag",
+		"processor_kafka_lag_messages",
 	} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("/metrics missing %q", want)

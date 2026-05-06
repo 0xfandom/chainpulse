@@ -84,8 +84,8 @@ func newConsumerWithReader(r MessageReader, topic string) *Consumer {
 // committed; on failure the offset is left uncommitted, an error counter
 // is bumped, and the loop sleeps briefly before fetching again.
 //
-// A separate goroutine refreshes the kafka_consumer_lag gauge once per
-// second from the underlying reader's Stats.
+// A separate goroutine refreshes the processor_kafka_lag_messages gauge
+// once per second from the underlying reader's Stats.
 func (c *Consumer) Run(ctx context.Context, handler MessageHandler) error {
 	if handler == nil {
 		return fmt.Errorf("consumer: nil handler")

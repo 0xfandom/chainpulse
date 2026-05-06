@@ -1,0 +1,32 @@
+.git
+.github
+.idea
+.vscode
+.DS_Store
+
+bin/
+out/
+dist/
+
+# Test data + local-only configs
+config/config.toml
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+*.test
+*.out
+*.prof
+coverage.*
+
+# Markdown except README.md (per repo policy)
+*.md
+!README.md
+
+# Examples are runtime-only assets
+examples/
+
+# Editor swap files
+*.swp
+*~
