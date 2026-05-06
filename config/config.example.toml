@@ -2,8 +2,10 @@
 # Secrets (RPC keys, DB DSNs) live in .env — referenced here as ${VAR}.
 
 [app]
-log_level = "info"          # debug | info | warn | error
-metrics_addr = ":9100"      # Prometheus scrape endpoint
+log_level        = "info"     # debug | info | warn | error
+metrics_addr     = ":9100"    # Prometheus scrape endpoint
+health_addr      = ":9180"    # /health endpoint for liveness probes (set "" to disable)
+shutdown_timeout = "30s"      # max time to drain in-flight work on SIGINT/SIGTERM
 
 [kafka]
 brokers = ["localhost:9092"]

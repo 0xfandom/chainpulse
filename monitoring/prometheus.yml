@@ -1,0 +1,34 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: chainpulse-local
+
+scrape_configs:
+  - job_name: chainpulse-indexer
+    static_configs:
+      - targets: ["indexer:9100"]
+        labels:
+          service: indexer
+
+  - job_name: chainpulse-processor
+    static_configs:
+      - targets: ["processor:9101"]
+        labels:
+          service: processor
+
+  - job_name: chainpulse-api
+    static_configs:
+      - targets: ["api:9102"]
+        labels:
+          service: api
+
+  - job_name: chainpulse-mcp
+    static_configs:
+      - targets: ["mcp:9103"]
+        labels:
+          service: mcp
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

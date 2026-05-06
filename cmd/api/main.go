@@ -118,7 +118,7 @@ func run(configPath string) error {
 	logger.Info().Msg("shutdown signal received")
 
 	gserver.GracefulStop()
-	wg.Wait()
+	monitor.WaitWithTimeout(&wg, cfg.App.ShutdownTimeout.AsDuration(), logger, "rest+grpc+metrics")
 
 	if err := cache.Close(); err != nil {
 		logger.Error().Err(err).Msg("redis close failed")

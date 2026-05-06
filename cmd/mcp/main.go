@@ -96,6 +96,24 @@ func run(configPath string) error {
 		logger.Info().Str("addr", addr).Msg("metrics server listening")
 	}
 
+	// Stdio transport uses stdin/stdout as the protocol channel; binding a
+	// health server would still be safe (stderr-only logging) but the
+	// canonical flow there is "process is alive iff parent process holds
+	// the pipe open." Skip it. SSE transport runs over HTTP and benefits
+	// from a separate /health endpoint.
+	if cfg.MCP.Transport == "sse" {
+		if addr := cfg.App.HealthAddr; addr != "" {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := monitor.ServeHealth(rootCtx, addr); err != nil {
+					logger.Error().Err(err).Str("addr", addr).Msg("health server stopped")
+				}
+			}()
+			logger.Info().Str("addr", addr).Msg("health server listening")
+		}
+	}
+
 	transportErr := make(chan error, 1)
 	wg.Add(1)
 	go func() {
@@ -122,7 +140,7 @@ func run(configPath string) error {
 		cancel()
 	}
 
-	wg.Wait()
+	monitor.WaitWithTimeout(&wg, cfg.App.ShutdownTimeout.AsDuration(), logger, "transport+metrics+health")
 
 	if err := cache.Close(); err != nil {
 		logger.Error().Err(err).Msg("redis close failed")
