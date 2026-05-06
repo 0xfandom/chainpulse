@@ -13,6 +13,7 @@ type AppConfig struct {
 	ClickHouse ClickHouseConfig `toml:"clickhouse"`
 	Redis      RedisConfig      `toml:"redis"`
 	Processor  ProcessorConfig  `toml:"processor"`
+	API        APIConfig        `toml:"api"`
 }
 
 // AppSection holds process-wide settings.
@@ -61,6 +62,36 @@ type RedisConfig struct {
 type ProcessorConfig struct {
 	ConsumerGroup string `toml:"consumer_group"`
 	MaxInFlight   int    `toml:"max_in_flight"`
+}
+
+// APIConfig holds the api binary's runtime settings.
+type APIConfig struct {
+	Addr           string             `toml:"addr"`
+	GRPCAddr       string             `toml:"grpc_addr"`
+	RequestTimeout Duration           `toml:"request_timeout"`
+	ShutdownDrain  Duration           `toml:"shutdown_drain"`
+	CORS           APICORSConfig      `toml:"cors"`
+	RateLimit      APIRateLimitConfig `toml:"rate_limit"`
+	WebSocket      APIWSConfig        `toml:"websocket"`
+}
+
+// APICORSConfig drives the CORS middleware.
+type APICORSConfig struct {
+	AllowedOrigins   []string `toml:"allowed_origins"`
+	AllowCredentials bool     `toml:"allow_credentials"`
+}
+
+// APIRateLimitConfig drives the per-IP rate limiter.
+type APIRateLimitConfig struct {
+	PerIPPerMinute int `toml:"per_ip_per_minute"`
+	Burst          int `toml:"burst"`
+}
+
+// APIWSConfig drives the WebSocket server settings.
+type APIWSConfig struct {
+	ReadBufferBytes  int    `toml:"read_buffer_bytes"`
+	WriteBufferBytes int    `toml:"write_buffer_bytes"`
+	OriginCheck      string `toml:"origin_check"` // "strict" | "permissive"
 }
 
 // Duration is a time.Duration wrapper that parses from TOML strings via

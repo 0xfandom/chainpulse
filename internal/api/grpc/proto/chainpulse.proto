@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package chainpulse.v1;
+
+option go_package = "github.com/0xfandom/chainpulse/internal/api/grpc/pb;pb";
+
+service Wallet {
+  rpc GetWalletPositions(GetWalletPositionsRequest) returns (GetWalletPositionsResponse);
+  rpc GetWalletBalances(GetWalletBalancesRequest) returns (GetWalletBalancesResponse);
+  rpc GetWalletHistory(GetWalletHistoryRequest) returns (GetWalletHistoryResponse);
+}
+
+service Token {
+  rpc GetTokenTransfers(GetTokenTransfersRequest) returns (GetTokenTransfersResponse);
+}
+
+service Protocol {
+  rpc GetProtocolStats(GetProtocolStatsRequest) returns (GetProtocolStatsResponse);
+}
+
+service Chain {
+  rpc GetChainBlocks(GetChainBlocksRequest) returns (GetChainBlocksResponse);
+}
+
+message PositionRow {
+  uint64 chain_id = 1;
+  string protocol = 2;
+  string event_type = 3;
+  string user_addr = 4;
+  string token_a = 5;
+  string amount_a = 6;
+  string params = 7;
+  int64 timestamp = 8; // unix seconds
+}
+
+message HistoryRow {
+  uint64 chain_id = 1;
+  uint64 block_number = 2;
+  string tx_hash = 3;
+  uint32 log_index = 4;
+  string protocol = 5;
+  string event_type = 6;
+  string user_addr = 7;
+  string token_a = 8;
+  string amount_a = 9;
+  string params = 10;
+  int64 timestamp = 11;
+}
+
+message TransferRow {
+  uint64 chain_id = 1;
+  uint64 block_number = 2;
+  string tx_hash = 3;
+  uint32 log_index = 4;
+  string token = 5;
+  string from_addr = 6;
+  string to_addr = 7;
+  string amount = 8;
+  int64 timestamp = 9;
+}
+
+message ProtocolStat {
+  uint64 chain_id = 1;
+  string protocol = 2;
+  uint64 event_count = 3;
+  uint64 unique_users = 4;
+  int64 last_seen = 5;
+}
+
+message BlockSummary {
+  uint64 chain_id = 1;
+  uint64 block_number = 2;
+  uint64 event_count = 3;
+  int64 latest_ts = 4;
+}
+
+message GetWalletPositionsRequest {
+  string wallet = 1;
+  uint64 chain_id = 2;
+  string protocol = 3;
+}
+
+message GetWalletPositionsResponse {
+  repeated PositionRow positions = 1;
+}
+
+message GetWalletBalancesRequest {
+  string wallet = 1;
+  uint64 chain_id = 2;
+}
+
+message GetWalletBalancesResponse {
+  uint64 chain_id = 1;
+  map<string, string> balances = 2; // token -> amount (uint256 as decimal string)
+}
+
+message GetWalletHistoryRequest {
+  string wallet = 1;
+  uint32 limit = 2;
+}
+
+message GetWalletHistoryResponse {
+  repeated HistoryRow events = 1;
+}
+
+message GetTokenTransfersRequest {
+  string token = 1;
+  uint32 limit = 2;
+}
+
+message GetTokenTransfersResponse {
+  repeated TransferRow transfers = 1;
+}
+
+message GetProtocolStatsRequest {
+  string protocol = 1;
+  uint64 chain_id = 2;
+}
+
+message GetProtocolStatsResponse {
+  repeated ProtocolStat stats = 1;
+}
+
+message GetChainBlocksRequest {
+  uint64 chain_id = 1;
+  uint32 limit = 2;
+}
+
+message GetChainBlocksResponse {
+  repeated BlockSummary blocks = 1;
+}
