@@ -78,6 +78,10 @@ func (a *Aggregator) Process(ctx context.Context, e *types.DecodedEvent) error {
 		return a.handleAave(ctx, e)
 	case e.Protocol == "compound_v3":
 		return a.handleCompound(ctx, e)
+	case e.Protocol == "lido":
+		return a.handleLido(ctx, e)
+	case e.Protocol == "curve":
+		return a.handleCurve(ctx, e)
 	default:
 		monitor.IncProcessorError(monitor.ProcErrAggregate)
 		return nil
@@ -157,6 +161,25 @@ func (a *Aggregator) handleCompound(ctx context.Context, e *types.DecodedEvent) 
 		if err := a.producer.PublishPositionUpdate(ctx, pos); err != nil {
 			return err
 		}
+	}
+	return a.producer.PublishDecoded(ctx, e)
+}
+
+// handleLido persists the stETH Submitted row and publishes the decoded
+// event. Submitted is not a lending-protocol position event, so no
+// WalletPosition record is produced.
+func (a *Aggregator) handleLido(ctx context.Context, e *types.DecodedEvent) error {
+	if err := a.batch.Enqueue(ctx, e); err != nil {
+		return err
+	}
+	return a.producer.PublishDecoded(ctx, e)
+}
+
+// handleCurve persists the Curve Stableswap TokenExchange row and publishes
+// the decoded event. Swaps have no lending-protocol position semantic.
+func (a *Aggregator) handleCurve(ctx context.Context, e *types.DecodedEvent) error {
+	if err := a.batch.Enqueue(ctx, e); err != nil {
+		return err
 	}
 	return a.producer.PublishDecoded(ctx, e)
 }

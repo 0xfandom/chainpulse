@@ -29,6 +29,7 @@ type fakeClient struct {
 	subErr      chan error
 	subscribeFn func(ctx context.Context, ch chan<- *ethtypes.Header) (ethereum.Subscription, error)
 	filterFn    func(ctx context.Context, q ethereum.FilterQuery) ([]ethtypes.Log, error)
+	headerFn    func(ctx context.Context, n *big.Int) (*ethtypes.Header, error)
 	closed      bool
 }
 
@@ -53,6 +54,13 @@ func (f *fakeClient) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]
 		return f.filterFn(ctx, q)
 	}
 	return nil, nil
+}
+
+func (f *fakeClient) HeaderByNumber(ctx context.Context, n *big.Int) (*ethtypes.Header, error) {
+	if f.headerFn != nil {
+		return f.headerFn(ctx, n)
+	}
+	return &ethtypes.Header{Number: new(big.Int).Set(n), Time: 1_700_000_000}, nil
 }
 
 func (f *fakeClient) Close() { f.closed = true }
@@ -129,6 +137,63 @@ func TestRun_ProcessesBlocksThenContextCancel(t *testing.T) {
 	}
 	if got := filterCalls.Load(); got != 1 {
 		t.Errorf("filterCalls = %d, want 1", got)
+	}
+}
+
+// TestRun_ConfirmationsLag asserts that with Confirmations=2 a head at
+// block 100 triggers a FilterLogs scoped to block 98 (the safe head),
+// not 100. Demonstrates the reorg-safety lag.
+func TestRun_ConfirmationsLag(t *testing.T) {
+	cfg := types.ChainConfig{ChainID: 8453, Name: "base", RPCWSS: "wss://example/ws", Confirmations: 2}
+	dec := NewABIDecoder()
+
+	prod, err := NewProducer(ProducerConfig{Brokers: []string{"localhost:9092"}, Topic: "raw_events"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prod.Close()
+
+	headers := make(chan *ethtypes.Header, 1)
+	subErr := make(chan error, 1)
+
+	var filterCalls atomic.Int32
+	var filterFromBlock atomic.Int64
+	fc := &fakeClient{
+		headers: headers,
+		subErr:  subErr,
+		filterFn: func(ctx context.Context, q ethereum.FilterQuery) ([]ethtypes.Log, error) {
+			filterCalls.Add(1)
+			filterFromBlock.Store(q.FromBlock.Int64())
+			return []ethtypes.Log{}, nil
+		},
+		headerFn: func(ctx context.Context, n *big.Int) (*ethtypes.Header, error) {
+			return &ethtypes.Header{Number: new(big.Int).Set(n), Time: 1_700_000_000}, nil
+		},
+	}
+
+	cl := NewChainListener(cfg, dec, prod).WithDialer(func(ctx context.Context, url string) (EthClient, error) {
+		return fc, nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- cl.Run(ctx) }()
+
+	headers <- &ethtypes.Header{Number: big.NewInt(100), Time: 1_700_000_000}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for filterCalls.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not exit on cancel")
+	}
+	if got := filterFromBlock.Load(); got != 98 {
+		t.Errorf("FromBlock = %d, want 98 (head 100 - confirmations 2)", got)
 	}
 }
 

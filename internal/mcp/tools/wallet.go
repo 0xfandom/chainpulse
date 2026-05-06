@@ -35,7 +35,7 @@ type walletPositionsArgs struct {
 func walletPositionsDef() mcp.ToolDefinition {
 	return mcp.ToolDefinition{
 		Name:        "get_wallet_positions",
-		Description: "Return active DeFi positions (supply, borrow, withdraw, repay) for a wallet across indexed chains.",
+		Description: "Return active DeFi positions (supply, borrow, withdraw, repay) for a wallet across indexed chains. Always render tx_hash, token, and address fields verbatim with their full 0x-prefixed hex (never truncate to 0xabcd…1234 form); humans need full hashes to look up on block explorers.",
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"wallet"},
@@ -91,7 +91,7 @@ type walletBalancesArgs struct {
 func walletBalancesDef() mcp.ToolDefinition {
 	return mcp.ToolDefinition{
 		Name:        "get_wallet_balances",
-		Description: "Return per-token balances for a wallet. With chain_id, scopes to that chain; without, returns balances across every cached chain.",
+		Description: "Return per-token balances for a wallet. With chain_id, scopes to that chain; without, returns balances across every cached chain. Always render tx_hash, token, and address fields verbatim with their full 0x-prefixed hex (never truncate to 0xabcd…1234 form); humans need full hashes to look up on block explorers.",
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"wallet"},
@@ -119,15 +119,12 @@ func walletBalancesHandler(deps *Deps) mcp.ToolHandler {
 			return nil, err
 		}
 		a.Wallet = strings.ToLower(a.Wallet)
-		if deps.Cache == nil {
-			if a.ChainID != 0 {
-				return walletBalancesResponse{Wallet: a.Wallet, ChainID: a.ChainID, Balances: map[string]string{}}, nil
-			}
-			return walletBalancesResponse{Wallet: a.Wallet, ByChain: map[uint64]map[string]string{}}, nil
-		}
+		// Read from ClickHouse wallet_balances MV (Int256 deltas) — no int64
+		// clamp. The Redis HINCRBY-backed cache is unreliable for tokens
+		// with > int64 raw amounts; documented Day-2 limit.
 		return cached(ctx, deps, "get_wallet_balances", argsAsMap(params), func() (walletBalancesResponse, error) {
 			if a.ChainID != 0 {
-				balances, err := deps.Cache.GetBalances(ctx, a.Wallet, a.ChainID)
+				balances, err := deps.Store.WalletBalancesByChain(ctx, a.Wallet, a.ChainID)
 				if err != nil {
 					return walletBalancesResponse{}, err
 				}
@@ -136,7 +133,7 @@ func walletBalancesHandler(deps *Deps) mcp.ToolHandler {
 				}
 				return walletBalancesResponse{Wallet: a.Wallet, ChainID: a.ChainID, Balances: balances}, nil
 			}
-			byChain, err := deps.Cache.GetAllBalances(ctx, a.Wallet)
+			byChain, err := deps.Store.WalletBalancesAllChains(ctx, a.Wallet)
 			if err != nil {
 				return walletBalancesResponse{}, err
 			}
@@ -158,7 +155,7 @@ type walletHistoryArgs struct {
 func walletHistoryDef() mcp.ToolDefinition {
 	return mcp.ToolDefinition{
 		Name:        "get_wallet_history",
-		Description: "Return the most recent decoded events involving a wallet across all indexed chains.",
+		Description: "Return the most recent decoded events involving a wallet across all indexed chains. Always render tx_hash, token, and address fields verbatim with their full 0x-prefixed hex (never truncate to 0xabcd…1234 form); humans need full hashes to look up on block explorers.",
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"wallet"},

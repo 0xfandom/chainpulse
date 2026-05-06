@@ -53,12 +53,23 @@ func TestReadStore_QueryConstants(t *testing.T) {
 		"ChainRecentBlocks":       sqlChainRecentBlocks,
 		"WhaleTransfers":          sqlWhaleTransfers,
 		"WhaleTransfersByChain":   sqlWhaleTransfersByChain,
+		"LatestBlockByChain":      sqlLatestBlockByChain,
+		"WalletBalancesByChain":   sqlWalletBalancesByChain,
 	} {
 		if !strings.Contains(strings.ToUpper(q), "SELECT") {
 			t.Errorf("%s missing SELECT", name)
 		}
 		if strings.Count(q, "?") == 0 {
 			t.Errorf("%s missing parameter placeholders", name)
+		}
+	}
+	// LatestBlocksAllChains + WalletBalancesAllChains have no parameters; just check SELECT
+	for name, q := range map[string]string{
+		"LatestBlocksAllChains":   sqlLatestBlocksAllChains,
+		"WalletBalancesAllChains": sqlWalletBalancesAllChains,
+	} {
+		if !strings.Contains(strings.ToUpper(q), "SELECT") {
+			t.Errorf("%s missing SELECT", name)
 		}
 	}
 	for name, q := range map[string]string{

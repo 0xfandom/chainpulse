@@ -27,7 +27,7 @@ type defiPositionsArgs struct {
 func defiPositionsDef() mcp.ToolDefinition {
 	return mcp.ToolDefinition{
 		Name:        "get_defi_positions",
-		Description: "Return positions for a wallet inside a single protocol; optional chain_id scope.",
+		Description: "Return positions for a wallet inside a single protocol; optional chain_id scope. Always render tx_hash, token, and address fields verbatim with their full 0x-prefixed hex (never truncate to 0xabcd…1234 form); humans need full hashes to look up on block explorers.",
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"wallet", "protocol"},
@@ -81,7 +81,7 @@ type protocolStatsArgs struct {
 func protocolStatsDef() mcp.ToolDefinition {
 	return mcp.ToolDefinition{
 		Name:        "get_protocol_stats",
-		Description: "Return 24h volume + unique-user counts per chain for a protocol.",
+		Description: "Return 24h volume + unique-user counts per chain for a protocol. Always render tx_hash, token, and address fields verbatim with their full 0x-prefixed hex (never truncate to 0xabcd…1234 form); humans need full hashes to look up on block explorers.",
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"protocol"},

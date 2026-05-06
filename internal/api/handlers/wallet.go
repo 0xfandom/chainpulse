@@ -63,10 +63,10 @@ func (h *WalletHandlers) Positions(c *gin.Context) {
 
 // Balances: GET /v1/wallet/:address/balances?chain_id=
 //
-// Reads from the Redis balance hash family (no ClickHouse fallback for
-// v1 — the processor's writer keeps the hash up-to-date). Cached for
-// 10s; the small TTL is acceptable because it's just a wrapper around a
-// SCAN.
+// Reads the ClickHouse wallet_balances materialized view (Int256 deltas)
+// — authoritative; no int64 clamping. The Redis HINCRBY-backed hot path
+// is unreliable for tokens whose raw amounts exceed int64 (any 18-decimal
+// token); replacing it is a Day-2 follow-up.
 func (h *WalletHandlers) Balances(c *gin.Context) {
 	addr, err := normalizeAddress(c.Param("address"))
 	if err != nil {
@@ -82,15 +82,13 @@ func (h *WalletHandlers) Balances(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "chain_id is required for balances"})
 		return
 	}
-	if h.deps.Cache == nil {
-		c.JSON(http.StatusOK, gin.H{"wallet": addr, "chain_id": chainID, "balances": map[string]string{}})
-		return
-	}
-
-	balances, err := h.deps.Cache.GetBalances(c.Request.Context(), addr, chainID)
+	balances, err := h.deps.Store.WalletBalancesByChain(c.Request.Context(), addr, chainID)
 	if err != nil {
 		respondInternal(c, err, "wallet balances failed")
 		return
+	}
+	if balances == nil {
+		balances = map[string]string{}
 	}
 	c.JSON(http.StatusOK, gin.H{"wallet": addr, "chain_id": chainID, "balances": balances})
 }

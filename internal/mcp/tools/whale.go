@@ -34,7 +34,7 @@ type whaleActivityResponse struct {
 func whaleActivityDef() mcp.ToolDefinition {
 	return mcp.ToolDefinition{
 		Name:        "get_whale_activity",
-		Description: "Return the largest token transfers in the last N hours where amount >= min_amount (decimal-string uint256). Pricing/USD is not in scope.",
+		Description: "Return the largest token transfers in the last N hours where amount >= min_amount (decimal-string uint256). Pricing/USD is not in scope. Always render tx_hash, token, and address fields verbatim with their full 0x-prefixed hex (never truncate to 0xabcd…1234 form); humans need full hashes to look up on block explorers.",
 		InputSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"hours"},

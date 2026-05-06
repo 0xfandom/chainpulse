@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -127,64 +128,53 @@ func TestWalletBalances_PerChain(t *testing.T) {
 	s, _, mr := newServerWithTools(t)
 	wallet := "0xcccccccccccccccccccccccccccccccccccccccc"
 	mr.HSet("balance:"+wallet+":1:0xtokenA", "amount", "1000")
-	mr.HSet("balance:"+wallet+":1:0xtokenB", "amount", "2500")
+	_ = mr // miniredis no longer drives balances; ClickHouse MV does
 
 	out := s.Handle(context.Background(), toolCall("get_wallet_balances",
 		map[string]any{"wallet": wallet, "chain_id": 1}))
-	resp := decode(t, out)
-	if resp.Error != nil {
-		t.Fatalf("err: %+v", resp.Error)
+	payload := unwrapToolCallText(t, out)
+	if !strings.Contains(payload, `"chain_id":1`) {
+		t.Errorf("expected chain_id=1 in unwrapped payload; got %s", payload)
 	}
-	res, _ := json.Marshal(resp.Result)
-	var wrap struct {
-		Result struct {
-			Content []struct{ Text string } `json:"content"`
-		}
-	}
-	if err := json.Unmarshal([]byte(`{"result":`+string(res)+`}`), &wrap); err != nil {
-		t.Fatal(err)
-	}
-	if len(wrap.Result.Content) == 0 {
-		t.Fatal("no content in response")
-	}
-	var payload walletBalancesResponse
-	if err := json.Unmarshal([]byte(wrap.Result.Content[0].Text), &payload); err != nil {
-		t.Fatal(err)
-	}
-	if payload.ChainID != 1 || len(payload.Balances) != 2 {
-		t.Errorf("expected 2 balances on chain 1, got %+v", payload)
+	if strings.Contains(payload, `"by_chain"`) {
+		t.Errorf("chain-scoped query should not include by_chain; got %s", payload)
 	}
 }
 
-func TestWalletBalances_AggregatesAcrossChains(t *testing.T) {
-	s, _, mr := newServerWithTools(t)
+func TestWalletBalances_AcrossChainsEmptyShape(t *testing.T) {
+	s, _, _ := newServerWithTools(t)
 	wallet := "0xdddddddddddddddddddddddddddddddddddddddd"
-	mr.HSet("balance:"+wallet+":1:0xtoken1", "amount", "10")
-	mr.HSet("balance:"+wallet+":137:0xtoken2", "amount", "20")
 
 	out := s.Handle(context.Background(), toolCall("get_wallet_balances",
 		map[string]any{"wallet": wallet}))
-	resp := decode(t, out)
-	if resp.Error != nil {
-		t.Fatalf("err: %+v", resp.Error)
+	payload := unwrapToolCallText(t, out)
+	if !strings.Contains(payload, `"wallet":"`+wallet+`"`) {
+		t.Errorf("expected wallet field in payload; got %s", payload)
+	}
+	if strings.Contains(payload, `"chain_id":`) {
+		t.Errorf("cross-chain query should not include chain_id; got %s", payload)
+	}
+}
+
+// unwrapToolCallText returns the inner JSON string from a tools/call
+// response: result.content[0].text. Test helper.
+func unwrapToolCallText(t *testing.T, frame []byte) string {
+	t.Helper()
+	var resp mcp.Response
+	if err := json.Unmarshal(frame, &resp); err != nil {
+		t.Fatalf("decode: %v", err)
 	}
 	res, _ := json.Marshal(resp.Result)
 	var wrap struct {
 		Content []struct{ Text string } `json:"content"`
 	}
 	if err := json.Unmarshal(res, &wrap); err != nil {
-		t.Fatal(err)
+		t.Fatalf("decode result: %v", err)
 	}
 	if len(wrap.Content) == 0 {
-		t.Fatal("no content")
+		t.Fatalf("no content array in result: %s", res)
 	}
-	var payload walletBalancesResponse
-	if err := json.Unmarshal([]byte(wrap.Content[0].Text), &payload); err != nil {
-		t.Fatal(err)
-	}
-	if len(payload.ByChain) != 2 {
-		t.Errorf("expected 2 chains, got %+v", payload.ByChain)
-	}
+	return wrap.Content[0].Text
 }
 
 func TestWalletHistory_LimitClampedTo500(t *testing.T) {
