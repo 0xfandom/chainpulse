@@ -18,7 +18,16 @@ CREATE TABLE IF NOT EXISTS defi_events
     amount_a     String,
     amount_b     Nullable(String),
     params       String,         -- JSON blob with protocol-specific fields
-    timestamp    DateTime
+    timestamp    DateTime,
+
+    -- Projection optimized for "give me events for wallet W ordered by
+    -- recency". Backs /v1/wallet/{addr}/positions and /history hot
+    -- paths; without it those queries scan by (chain, protocol, block).
+    PROJECTION p_user_time
+    (
+        SELECT *
+        ORDER BY (user_addr, timestamp)
+    )
 )
 ENGINE = ReplacingMergeTree(block_number)
 PARTITION BY toYYYYMM(timestamp)

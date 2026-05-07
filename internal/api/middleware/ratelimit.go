@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"hash/fnv"
 	"net"
 	"net/http"
 	"strings"
@@ -15,15 +16,30 @@ import (
 	"github.com/0xfandom/chainpulse/internal/types"
 )
 
-// rateLimiterCacheSize bounds how many distinct IPs we keep buckets for.
-// 100k entries at ~64 bytes each is ~6 MB — fine for a single api node
-// and prevents an unbounded map from a misbehaving client.
+// rateLimiterShards is the count of independent stripes the per-IP
+// bucket map is partitioned across. Power of two so the modulo collapses
+// to a bit-mask. Lookups fan out across shards to remove the single
+// global mutex as a contention point under load.
+const rateLimiterShards = 256
+
+// rateLimiterCacheSize bounds how many distinct IPs we keep buckets for
+// across all shards combined. 100k entries at ~64 bytes each is ~6 MB —
+// fine for a single api node and prevents an unbounded map from a
+// misbehaving client.
 const rateLimiterCacheSize = 100_000
 
-// RateLimiter is a per-IP token-bucket limiter backed by an LRU map.
-type RateLimiter struct {
+// rateLimiterShard is one stripe of the limiter map. Owns its own mutex
+// and LRU so contended Allow() calls don't serialize.
+type rateLimiterShard struct {
 	mu      sync.Mutex
 	buckets *lru.Cache[string, *rate.Limiter]
+}
+
+// RateLimiter is a per-IP token-bucket limiter backed by a sharded LRU
+// map. Sharding by fnv32(ip) & (rateLimiterShards - 1) trades a small
+// amount of memory for parallel Allow() throughput.
+type RateLimiter struct {
+	shards [rateLimiterShards]*rateLimiterShard
 
 	rateLimit rate.Limit
 	burst     int
@@ -32,13 +48,21 @@ type RateLimiter struct {
 // NewRateLimiter constructs a RateLimiter from cfg. PerIPPerMinute=0
 // disables limiting (Allow always returns true).
 func NewRateLimiter(cfg types.APIRateLimitConfig) *RateLimiter {
-	cache, _ := lru.New[string, *rate.Limiter](rateLimiterCacheSize)
-	rl := &RateLimiter{buckets: cache, burst: cfg.Burst}
+	rl := &RateLimiter{burst: cfg.Burst}
 	if cfg.PerIPPerMinute > 0 {
 		rl.rateLimit = rate.Limit(float64(cfg.PerIPPerMinute) / 60.0)
 	}
 	if rl.burst <= 0 {
 		rl.burst = 1
+	}
+
+	perShard := rateLimiterCacheSize / rateLimiterShards
+	if perShard < 1 {
+		perShard = 1
+	}
+	for i := range rl.shards {
+		cache, _ := lru.New[string, *rate.Limiter](perShard)
+		rl.shards[i] = &rateLimiterShard{buckets: cache}
 	}
 	return rl
 }
@@ -53,14 +77,23 @@ func (r *RateLimiter) Allow(ip string) bool {
 	return bucket.Allow()
 }
 
+// shardFor maps ip to its owning shard via fnv32a. The hash is stable
+// per-process; resharding requires a restart.
+func (r *RateLimiter) shardFor(ip string) *rateLimiterShard {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(ip))
+	return r.shards[h.Sum32()&(rateLimiterShards-1)]
+}
+
 func (r *RateLimiter) bucketFor(ip string) *rate.Limiter {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if b, ok := r.buckets.Get(ip); ok {
+	s := r.shardFor(ip)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if b, ok := s.buckets.Get(ip); ok {
 		return b
 	}
 	b := rate.NewLimiter(r.rateLimit, r.burst)
-	r.buckets.Add(ip, b)
+	s.buckets.Add(ip, b)
 	return b
 }
 
@@ -99,8 +132,10 @@ func ClientIP(req *http.Request) string {
 
 // Clear empties the limiter (test helper).
 func (r *RateLimiter) Clear() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.buckets.Purge()
+	for _, s := range r.shards {
+		s.mu.Lock()
+		s.buckets.Purge()
+		s.mu.Unlock()
+	}
 	_ = time.Now
 }
