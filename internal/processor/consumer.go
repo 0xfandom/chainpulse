@@ -22,6 +22,14 @@ import (
 // follows in Day 5+.
 const retrySleep = 100 * time.Millisecond
 
+// commitInterval is the cadence at which the underlying Reader flushes
+// the latest acknowledged offsets to the broker. Manual CommitMessages
+// calls update the in-memory offset; the Reader's background loop
+// performs the actual broker round-trip every commitInterval. Trades
+// at-most-200ms of redelivery on crash for one to two orders of
+// magnitude fewer commit RTTs on the hot path.
+const commitInterval = 200 * time.Millisecond
+
 // MessageHandler processes a single ChainEvent. Returning an error keeps
 // the message un-committed so Kafka will redeliver it.
 type MessageHandler func(ctx context.Context, event *types.ChainEvent) error
@@ -69,7 +77,7 @@ func NewConsumer(cfg ConsumerConfig) (*Consumer, error) {
 		GroupID:        cfg.GroupID,
 		MinBytes:       1,
 		MaxBytes:       10e6,
-		CommitInterval: 0, // manual commit on success only
+		CommitInterval: commitInterval,
 	})
 	return newConsumerWithReader(r, cfg.Topic), nil
 }
@@ -103,6 +111,7 @@ func (c *Consumer) Run(ctx context.Context, handler MessageHandler) error {
 			return nil
 		}
 
+		start := time.Now()
 		msg, err := c.reader.FetchMessage(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.EOF) {
@@ -135,7 +144,9 @@ func (c *Consumer) Run(ctx context.Context, handler MessageHandler) error {
 			}
 			logger.Error().Err(err).Int64("offset", msg.Offset).Msg("commit failed")
 			monitor.IncProcessorError(monitor.ProcErrKafkaPublish)
+			continue
 		}
+		monitor.ObserveEventProcessing(time.Since(start))
 	}
 }
 
