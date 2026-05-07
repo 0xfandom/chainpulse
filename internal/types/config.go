@@ -48,6 +48,12 @@ type ChainConfig struct {
 	StartBlock    uint64   `toml:"start_block"`
 	Confirmations uint64   `toml:"confirmations"`
 	Contracts     []string `toml:"contracts"`
+	// HeadTimeout caps the silent gap between WSS head deliveries before
+	// the listener treats the subscription as dead and reconnects. Some
+	// providers stop sending heads without surfacing an error on the
+	// subscription channel, so the listener needs a watchdog to make
+	// progress detectable. Zero (unset) defaults to 90s.
+	HeadTimeout Duration `toml:"head_timeout"`
 }
 
 // ClickHouseConfig holds the analytical-store connection + batching policy.

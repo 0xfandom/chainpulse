@@ -22,7 +22,13 @@ const (
 	reconnectInitialBackoff = time.Second
 	reconnectMaxBackoff     = 30 * time.Second
 	reconnectMaxAttempts    = 10
+	defaultHeadTimeout      = 90 * time.Second
 )
+
+// errHeadTimeout is returned by runOnce when no head arrives within the
+// configured watchdog window. Surfaced as an error so the existing
+// reconnect loop kicks in.
+var errHeadTimeout = errors.New("head watchdog timeout")
 
 // ChainListener subscribes to a single chain's WebSocket head stream,
 // fetches logs per block, decodes them, and publishes to Kafka.
@@ -116,6 +122,11 @@ func (cl *ChainListener) Run(ctx context.Context) error {
 // reconnect is intentionally skipped to avoid re-emitting hours of
 // blocks if the listener was offline. Resume from the current safe head
 // instead.
+//
+// A head watchdog covers providers that drop heads without surfacing an
+// error on the subscription. If no header arrives within HeadTimeout
+// (default 90s), runOnce returns errHeadTimeout and the outer Run loop
+// reconnects.
 func (cl *ChainListener) runOnce(ctx context.Context) error {
 	client, err := cl.dialer(ctx, cl.cfg.RPCWSS)
 	if err != nil {
@@ -135,6 +146,13 @@ func (cl *ChainListener) runOnce(ctx context.Context) error {
 	}
 	defer sub.Unsubscribe()
 
+	headTimeout := cl.cfg.HeadTimeout.AsDuration()
+	if headTimeout <= 0 {
+		headTimeout = defaultHeadTimeout
+	}
+	watchdog := time.NewTimer(headTimeout)
+	defer watchdog.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -144,10 +162,20 @@ func (cl *ChainListener) runOnce(ctx context.Context) error {
 				return errors.New("subscription closed")
 			}
 			return fmt.Errorf("subscription error: %w", err)
+		case <-watchdog.C:
+			cl.log.Warn().Dur("timeout", headTimeout).Msg("no head received within watchdog window; reconnecting")
+			return fmt.Errorf("%w after %s", errHeadTimeout, headTimeout)
 		case header := <-headers:
 			if header == nil {
 				continue
 			}
+			if !watchdog.Stop() {
+				select {
+				case <-watchdog.C:
+				default:
+				}
+			}
+			watchdog.Reset(headTimeout)
 			cl.onNewHead(ctx, client, header)
 		}
 	}
