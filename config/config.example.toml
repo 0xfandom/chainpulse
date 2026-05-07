@@ -67,7 +67,7 @@ name          = "base"
 rpc_wss       = "${BASE_WSS_URL}"
 rpc_http      = "${BASE_HTTP_URL}"
 start_block   = 0
-confirmations = 2
+confirmations = 1
 contracts     = []  # empty = all contracts; pass an allowlist to scope
 
 [[chains]]
@@ -85,7 +85,7 @@ name          = "arbitrum"
 rpc_wss       = "${ARB_WSS_URL}"
 rpc_http      = "${ARB_HTTP_URL}"
 start_block   = 0
-confirmations = 2
+confirmations = 1
 contracts     = []
 
 [[chains]]
@@ -94,7 +94,7 @@ name          = "optimism"
 rpc_wss       = "${OP_WSS_URL}"
 rpc_http      = "${OP_HTTP_URL}"
 start_block   = 0
-confirmations = 2
+confirmations = 1
 contracts     = []
 
 [[chains]]

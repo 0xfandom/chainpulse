@@ -145,7 +145,7 @@ func (c *clickhouseConn) Close() error {
 // cascade the decision to dependent materialized views.
 func withDedupSettings(ctx context.Context, token string) context.Context {
 	return clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
-		"insert_deduplication_token":                       token,
+		"insert_deduplication_token":                         token,
 		"deduplicate_blocks_in_dependent_materialized_views": uint8(1),
 	}))
 }

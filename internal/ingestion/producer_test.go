@@ -2,12 +2,45 @@ package ingestion
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/segmentio/kafka-go"
+
 	"github.com/0xfandom/chainpulse/internal/types"
 )
+
+// fakeWriter captures every WriteMessages call so tests can assert
+// batching behavior without a live broker.
+type fakeWriter struct {
+	mu    sync.Mutex
+	calls [][]kafka.Message
+	err   error
+}
+
+func (f *fakeWriter) WriteMessages(_ context.Context, msgs ...kafka.Message) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	cp := make([]kafka.Message, len(msgs))
+	copy(cp, msgs)
+	f.calls = append(f.calls, cp)
+	return nil
+}
+
+func (f *fakeWriter) Close() error { return nil }
+
+func (f *fakeWriter) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
+}
 
 func TestNewProducer_Validation(t *testing.T) {
 	if _, err := NewProducer(ProducerConfig{}); err == nil {
@@ -38,6 +71,90 @@ func TestPublish_NilEvent(t *testing.T) {
 	}
 	if err := p.Publish(context.Background(), nil); err == nil {
 		t.Fatal("expected error for nil event")
+	}
+}
+
+func TestPublishBatch_EmptySlice(t *testing.T) {
+	p, err := NewProducer(ProducerConfig{
+		Brokers: []string{"localhost:9092"},
+		Topic:   "raw_events",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.PublishBatch(context.Background(), nil); err != nil {
+		t.Fatalf("nil slice should be no-op, got %v", err)
+	}
+	if err := p.PublishBatch(context.Background(), []*types.ChainEvent{}); err != nil {
+		t.Fatalf("empty slice should be no-op, got %v", err)
+	}
+}
+
+func TestPublishBatch_NilEntryRejected(t *testing.T) {
+	p, err := NewProducer(ProducerConfig{
+		Brokers: []string{"localhost:9092"},
+		Topic:   "raw_events",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = p.PublishBatch(context.Background(), []*types.ChainEvent{
+		{ChainID: 8453, EventName: "Transfer"},
+		nil,
+	})
+	if err == nil {
+		t.Fatal("expected error for nil entry in batch")
+	}
+}
+
+// TestPublishBatch_SingleWriteCall is the load-bearing assertion for
+// the per-block batching change: regardless of how many events a block
+// produces, PublishBatch must issue exactly one WriteMessages call.
+func TestPublishBatch_SingleWriteCall(t *testing.T) {
+	fw := &fakeWriter{}
+	p := newProducerWithWriter(fw, "raw_events", map[uint64]string{8453: "base"})
+
+	events := []*types.ChainEvent{
+		{ChainID: 8453, EventName: "Transfer"},
+		{ChainID: 8453, EventName: "Swap"},
+		{ChainID: 8453, EventName: "Borrow"},
+	}
+	if err := p.PublishBatch(context.Background(), events); err != nil {
+		t.Fatalf("PublishBatch: %v", err)
+	}
+
+	if got := fw.callCount(); got != 1 {
+		t.Fatalf("WriteMessages calls = %d, want 1", got)
+	}
+	got := fw.calls[0]
+	if len(got) != len(events) {
+		t.Fatalf("messages in single call = %d, want %d", len(got), len(events))
+	}
+	wantKey := strconv.AppendUint(nil, 8453, 10)
+	for i, m := range got {
+		if string(m.Key) != string(wantKey) {
+			t.Errorf("msg %d key = %q, want %q", i, string(m.Key), string(wantKey))
+		}
+		var ev types.ChainEvent
+		if err := json.Unmarshal(m.Value, &ev); err != nil {
+			t.Errorf("msg %d value not valid JSON: %v", i, err)
+		}
+	}
+}
+
+func TestPublishBatch_MixedChainsRejected(t *testing.T) {
+	fw := &fakeWriter{}
+	p := newProducerWithWriter(fw, "raw_events", map[uint64]string{8453: "base", 1: "ethereum"})
+
+	err := p.PublishBatch(context.Background(), []*types.ChainEvent{
+		{ChainID: 8453, EventName: "Transfer"},
+		{ChainID: 1, EventName: "Transfer"},
+	})
+	if err == nil {
+		t.Fatal("expected error for mixed chain ids in single batch")
+	}
+	if fw.callCount() != 0 {
+		t.Errorf("WriteMessages should not be called on validation failure, got %d calls", fw.callCount())
 	}
 }
 
