@@ -73,7 +73,9 @@ func run(configPath string) error {
 
 	server := api.NewServer(cfg.API, rs, cache, version)
 
-	deps := handlers.HandlerDeps{Store: rs, Cache: cache}
+	l1 := store.NewL1Cache(store.L1Config{Capacity: 1024, TTL: 2 * time.Second})
+
+	deps := handlers.HandlerDeps{Store: rs, Cache: cache, L1: l1}
 	v1 := server.V1Group()
 	handlers.NewWalletHandlers(deps).Register(v1)
 	handlers.NewTokenHandlers(deps).Register(v1)

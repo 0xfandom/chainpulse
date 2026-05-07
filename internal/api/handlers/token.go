@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -38,13 +39,17 @@ func (h *TokenHandlers) Transfers(c *gin.Context) {
 	limit := clampLimit(c.Query("limit"), tokenTransfersDef, tokenTransfersMax)
 	cacheKey := fmt.Sprintf("api:token_transfers:%s:%d", addr, limit)
 
-	rows, _, err := store.Aside(c.Request.Context(), h.deps.Cache, cacheKey, tokenTransfersTTL,
-		func(ctx context.Context) ([]store.TransferRow, error) {
-			return h.deps.Store.TokenTransfers(ctx, addr, limit)
+	raw, _, err := store.AsideRaw(c.Request.Context(), h.deps.L1, h.deps.Cache, cacheKey, tokenTransfersTTL,
+		func(ctx context.Context) ([]byte, error) {
+			rows, qErr := h.deps.Store.TokenTransfers(ctx, addr, limit)
+			if qErr != nil {
+				return nil, qErr
+			}
+			return json.Marshal(gin.H{"token": addr, "limit": limit, "transfers": rows})
 		})
 	if err != nil {
 		respondInternal(c, err, "token transfers failed")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"token": addr, "limit": limit, "transfers": rows})
+	c.Data(http.StatusOK, jsonContentType, raw)
 }

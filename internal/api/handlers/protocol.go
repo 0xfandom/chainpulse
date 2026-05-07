@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -52,22 +53,26 @@ func (h *ProtocolHandlers) Stats(c *gin.Context) {
 	}
 	cacheKey := fmt.Sprintf("api:protocol_stats:%s:%d", name, chainID)
 
-	stats, _, err := store.Aside(c.Request.Context(), h.deps.Cache, cacheKey, protocolStatsTTL,
-		func(ctx context.Context) ([]store.ProtocolStat, error) {
-			return h.deps.Store.ProtocolStats(ctx, name)
+	raw, _, err := store.AsideRaw(c.Request.Context(), h.deps.L1, h.deps.Cache, cacheKey, protocolStatsTTL,
+		func(ctx context.Context) ([]byte, error) {
+			stats, qErr := h.deps.Store.ProtocolStats(ctx, name)
+			if qErr != nil {
+				return nil, qErr
+			}
+			if chainID > 0 {
+				filtered := make([]store.ProtocolStat, 0, len(stats))
+				for _, s := range stats {
+					if s.ChainID == chainID {
+						filtered = append(filtered, s)
+					}
+				}
+				stats = filtered
+			}
+			return json.Marshal(gin.H{"protocol": name, "stats": stats})
 		})
 	if err != nil {
 		respondInternal(c, err, "protocol stats failed")
 		return
 	}
-	if chainID > 0 {
-		filtered := stats[:0]
-		for _, s := range stats {
-			if s.ChainID == chainID {
-				filtered = append(filtered, s)
-			}
-		}
-		stats = filtered
-	}
-	c.JSON(http.StatusOK, gin.H{"protocol": name, "stats": stats})
+	c.Data(http.StatusOK, jsonContentType, raw)
 }
