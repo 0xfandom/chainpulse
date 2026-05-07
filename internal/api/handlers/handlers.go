@@ -1,7 +1,8 @@
 // Package handlers contains the api binary's REST handlers, organized by
 // resource: wallet, token, protocol, chain. Each handler delegates to
-// ReadStore (analytical) + ReadCache (hot path) via the cache-aside
-// helper in store.Aside.
+// ReadStore (analytical) + ReadCache (hot path) via the raw-bytes
+// cache-aside helper in store.AsideRaw, with an in-process L1 LRU
+// (store.L1Cache) keyed identically to Redis.
 package handlers
 
 import (
@@ -60,4 +61,5 @@ func parseChainID(raw string) (uint64, bool) {
 type HandlerDeps struct {
 	Store *store.ReadStore
 	Cache *store.ReadCache
+	L1    *store.L1Cache
 }

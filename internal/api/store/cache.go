@@ -9,6 +9,59 @@ import (
 	"github.com/0xfandom/chainpulse/internal/monitor"
 )
 
+// AsideRaw is the raw-bytes cache-aside flow used by handlers that want
+// to skip the double JSON encode imposed by the generic Aside helper.
+//
+// Lookup order: in-process L1 -> Redis -> fallback. On L1 hit the bytes
+// are returned untouched. On Redis hit the bytes are also written
+// through to L1 so subsequent lookups skip the network. On miss the
+// fallback is invoked, its result populates both Redis (with ttl) and
+// L1 (with the L1's own TTL).
+//
+// Cache write failures do not surface to callers as fatal errors —
+// they are wrapped and returned so handlers can decide whether to log.
+// The bytes themselves are always returned when the fallback succeeds.
+func AsideRaw(
+	ctx context.Context,
+	l1 *L1Cache,
+	cache *ReadCache,
+	key string,
+	ttl time.Duration,
+	fallback func(ctx context.Context) ([]byte, error),
+) ([]byte, bool, error) {
+	start := time.Now()
+	if v, ok := l1.Get(key); ok {
+		monitor.IncAPICacheHit(monitor.APICacheSourceL1)
+		monitor.ObserveAPICacheHit(monitor.APICacheSourceL1, time.Since(start))
+		return v, true, nil
+	}
+
+	if cache != nil {
+		raw, hit, err := cache.GetBytes(ctx, key)
+		if err == nil && hit {
+			monitor.IncAPICacheHit(monitor.APICacheSourceRedis)
+			monitor.ObserveAPICacheHit(monitor.APICacheSourceRedis, time.Since(start))
+			l1.Set(key, raw)
+			return raw, true, nil
+		}
+	}
+
+	v, err := fallback(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	monitor.IncAPICacheHit(monitor.APICacheSourceClickHouse)
+
+	if cache != nil {
+		if sErr := cache.SetBytes(ctx, key, v, ttl); sErr != nil {
+			l1.Set(key, v)
+			return v, false, fmt.Errorf("cache set: %w", sErr)
+		}
+	}
+	l1.Set(key, v)
+	return v, false, nil
+}
+
 // Aside runs the canonical cache-aside flow:
 //
 //  1. GET cache[key]. On hit, decode JSON, bump api_cache_hits_total{redis},

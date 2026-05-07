@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/0xfandom/chainpulse/internal/api/store"
 )
+
+const jsonContentType = "application/json; charset=utf-8"
 
 // Wallet handler TTLs / limits.
 const (
@@ -50,15 +53,19 @@ func (h *WalletHandlers) Positions(c *gin.Context) {
 	limit := walletPositionsLim
 	cacheKey := fmt.Sprintf("api:positions:%s:%d", addr, limit)
 
-	rows, _, err := store.Aside(c.Request.Context(), h.deps.Cache, cacheKey, walletPositionsTTL,
-		func(ctx context.Context) ([]store.PositionRow, error) {
-			return h.deps.Store.WalletDefiPositions(ctx, addr, limit)
+	raw, _, err := store.AsideRaw(c.Request.Context(), h.deps.L1, h.deps.Cache, cacheKey, walletPositionsTTL,
+		func(ctx context.Context) ([]byte, error) {
+			rows, qErr := h.deps.Store.WalletDefiPositions(ctx, addr, limit)
+			if qErr != nil {
+				return nil, qErr
+			}
+			return json.Marshal(gin.H{"wallet": addr, "positions": rows})
 		})
 	if err != nil {
 		respondInternal(c, err, "wallet positions failed")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"wallet": addr, "positions": rows})
+	c.Data(http.StatusOK, jsonContentType, raw)
 }
 
 // Balances: GET /v1/wallet/:address/balances?chain_id=
@@ -106,15 +113,19 @@ func (h *WalletHandlers) History(c *gin.Context) {
 	limit := clampLimit(c.Query("limit"), walletHistoryDef, walletHistoryMax)
 	cacheKey := fmt.Sprintf("api:history:%s:%d", addr, limit)
 
-	rows, _, err := store.Aside(c.Request.Context(), h.deps.Cache, cacheKey, walletHistoryTTL,
-		func(ctx context.Context) ([]store.HistoryRow, error) {
-			return h.deps.Store.WalletHistory(ctx, addr, limit)
+	raw, _, err := store.AsideRaw(c.Request.Context(), h.deps.L1, h.deps.Cache, cacheKey, walletHistoryTTL,
+		func(ctx context.Context) ([]byte, error) {
+			rows, qErr := h.deps.Store.WalletHistory(ctx, addr, limit)
+			if qErr != nil {
+				return nil, qErr
+			}
+			return json.Marshal(gin.H{"wallet": addr, "limit": limit, "events": rows})
 		})
 	if err != nil {
 		respondInternal(c, err, "wallet history failed")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"wallet": addr, "limit": limit, "events": rows})
+	c.Data(http.StatusOK, jsonContentType, raw)
 }
 
 // respondInternal logs and responds with 500. Cache write failures don't

@@ -267,6 +267,156 @@ func TestAside_FallbackError(t *testing.T) {
 	}
 }
 
+func TestAsideRaw_L1HitSkipsRedis(t *testing.T) {
+	c, mr := newTestCache(t)
+	l1 := NewL1Cache(L1Config{Capacity: 4, TTL: time.Second})
+	l1.Set("k", []byte(`{"v":1}`))
+
+	got, hit, err := AsideRaw(context.Background(), l1, c, "k", time.Minute,
+		func(ctx context.Context) ([]byte, error) {
+			t.Fatal("fallback should not run on L1 hit")
+			return nil, nil
+		})
+	if err != nil || !hit || string(got) != `{"v":1}` {
+		t.Errorf("hit=%v got=%q err=%v", hit, got, err)
+	}
+	if mr.Exists("k") {
+		t.Error("L1 hit must not touch Redis (no SET should occur)")
+	}
+}
+
+func TestAsideRaw_RedisHitWritesThroughToL1(t *testing.T) {
+	c, mr := newTestCache(t)
+	l1 := NewL1Cache(L1Config{Capacity: 4, TTL: time.Second})
+	if err := c.SetBytes(context.Background(), "k", []byte(`{"v":2}`), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+
+	got, hit, err := AsideRaw(context.Background(), l1, c, "k", time.Minute,
+		func(ctx context.Context) ([]byte, error) {
+			t.Fatal("fallback should not run on Redis hit")
+			return nil, nil
+		})
+	if err != nil || !hit || string(got) != `{"v":2}` {
+		t.Errorf("hit=%v got=%q err=%v", hit, got, err)
+	}
+	if v, ok := l1.Get("k"); !ok || string(v) != `{"v":2}` {
+		t.Errorf("L1 should have been populated, got ok=%v v=%q", ok, v)
+	}
+	_ = mr // keep ref so the miniredis isn't GC'd before assertion
+}
+
+func TestAsideRaw_MissFillsBothLayers(t *testing.T) {
+	c, mr := newTestCache(t)
+	l1 := NewL1Cache(L1Config{Capacity: 4, TTL: time.Second})
+
+	got, hit, err := AsideRaw(context.Background(), l1, c, "k", time.Minute,
+		func(ctx context.Context) ([]byte, error) {
+			return []byte(`{"v":3}`), nil
+		})
+	if err != nil || hit || string(got) != `{"v":3}` {
+		t.Errorf("hit=%v got=%q err=%v", hit, got, err)
+	}
+	if !mr.Exists("k") {
+		t.Error("Redis should be populated on fill")
+	}
+	if v, ok := l1.Get("k"); !ok || string(v) != `{"v":3}` {
+		t.Errorf("L1 should be populated on fill, got ok=%v v=%q", ok, v)
+	}
+}
+
+func TestAsideRaw_NilL1AndNilRedis(t *testing.T) {
+	got, hit, err := AsideRaw(context.Background(), nil, nil, "k", time.Minute,
+		func(ctx context.Context) ([]byte, error) {
+			return []byte(`{"v":4}`), nil
+		})
+	if err != nil || hit || string(got) != `{"v":4}` {
+		t.Errorf("hit=%v got=%q err=%v", hit, got, err)
+	}
+}
+
+func TestAsideRaw_FallbackError(t *testing.T) {
+	c, _ := newTestCache(t)
+	l1 := NewL1Cache(L1Config{Capacity: 4, TTL: time.Second})
+	_, _, err := AsideRaw(context.Background(), l1, c, "k", time.Minute,
+		func(ctx context.Context) ([]byte, error) {
+			return nil, errors.New("upstream down")
+		})
+	if err == nil {
+		t.Fatal("expected fallback error")
+	}
+}
+
+func TestL1Cache_DisabledByCapacity(t *testing.T) {
+	if l := NewL1Cache(L1Config{Capacity: 0, TTL: time.Second}); l != nil {
+		t.Error("zero capacity should disable L1")
+	}
+	if l := NewL1Cache(L1Config{Capacity: 8, TTL: 0}); l != nil {
+		t.Error("zero TTL should disable L1")
+	}
+}
+
+func TestL1Cache_NilCallable(t *testing.T) {
+	var l *L1Cache
+	if v, ok := l.Get("any"); ok || v != nil {
+		t.Errorf("nil L1 Get should miss, got ok=%v v=%v", ok, v)
+	}
+	l.Set("any", []byte("ignored")) // must not panic
+	l.Purge()                       // must not panic
+}
+
+func TestL1Cache_TTLExpiry(t *testing.T) {
+	l := NewL1Cache(L1Config{Capacity: 4, TTL: 25 * time.Millisecond})
+	l.Set("k", []byte(`{"v":1}`))
+	if v, ok := l.Get("k"); !ok || string(v) != `{"v":1}` {
+		t.Fatalf("immediate Get ok=%v v=%q", ok, v)
+	}
+	time.Sleep(60 * time.Millisecond)
+	if v, ok := l.Get("k"); ok {
+		t.Errorf("expected expiry miss after TTL, got v=%q", v)
+	}
+}
+
+func BenchmarkAsideRaw_L1Hit(b *testing.B) {
+	l1 := NewL1Cache(L1Config{Capacity: 64, TTL: time.Minute})
+	l1.Set("k", []byte(`{"v":42}`))
+	ctx := context.Background()
+	noopFallback := func(context.Context) ([]byte, error) {
+		b.Fatal("fallback should not run on L1 hit")
+		return nil, nil
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, _ = AsideRaw(ctx, l1, nil, "k", time.Minute, noopFallback)
+	}
+}
+
+func BenchmarkAsideRaw_RedisHit(b *testing.B) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer mr.Close()
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer client.Close()
+	cache := NewReadCache(client, time.Minute)
+	if err := cache.SetBytes(context.Background(), "k", []byte(`{"v":42}`), time.Minute); err != nil {
+		b.Fatal(err)
+	}
+	noopFallback := func(context.Context) ([]byte, error) {
+		b.Fatal("fallback should not run on Redis hit")
+		return nil, nil
+	}
+	ctx := context.Background()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Disable L1 each iteration so every loop hits Redis.
+		_, _, _ = AsideRaw(ctx, nil, cache, "k", time.Minute, noopFallback)
+	}
+}
+
 func TestAside_NilCache(t *testing.T) {
 	type payload struct{ V int }
 	got, hit, err := Aside[payload](context.Background(), nil, "k", time.Minute, func(ctx context.Context) (payload, error) {

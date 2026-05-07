@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -39,13 +40,17 @@ func (h *ChainHandlers) Blocks(c *gin.Context) {
 	limit := clampLimit(c.Query("limit"), chainBlocksDef, chainBlocksMax)
 	cacheKey := fmt.Sprintf("api:chain_blocks:%d:%d", id, limit)
 
-	rows, _, err := store.Aside(c.Request.Context(), h.deps.Cache, cacheKey, chainBlocksTTL,
-		func(ctx context.Context) ([]store.BlockSummary, error) {
-			return h.deps.Store.ChainRecentBlocks(ctx, id, limit)
+	raw, _, err := store.AsideRaw(c.Request.Context(), h.deps.L1, h.deps.Cache, cacheKey, chainBlocksTTL,
+		func(ctx context.Context) ([]byte, error) {
+			rows, qErr := h.deps.Store.ChainRecentBlocks(ctx, id, limit)
+			if qErr != nil {
+				return nil, qErr
+			}
+			return json.Marshal(gin.H{"chain_id": id, "limit": limit, "blocks": rows})
 		})
 	if err != nil {
 		respondInternal(c, err, "chain blocks failed")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"chain_id": id, "limit": limit, "blocks": rows})
+	c.Data(http.StatusOK, jsonContentType, raw)
 }

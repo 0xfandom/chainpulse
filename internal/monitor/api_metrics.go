@@ -29,7 +29,13 @@ var (
 	APICacheHitsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "api_cache_hits_total",
 		Help: "Cache hits / misses observed by api handlers.",
-	}, []string{"source"}) // source in {redis, clickhouse}
+	}, []string{"source"}) // source in {l1, redis, clickhouse}
+
+	APICacheHitSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "api_cache_hit_seconds",
+		Help:    "Wall-clock time of a cache lookup that resulted in a hit, labeled by source.",
+		Buckets: prometheus.ExponentialBuckets(0.0001, 2, 12), // 100us .. ~400ms
+	}, []string{"source"})
 
 	APIRateLimitedTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "api_rate_limited_total",
@@ -39,6 +45,7 @@ var (
 
 // Allowed values for the api_cache_hits_total source label.
 const (
+	APICacheSourceL1         = "l1"
 	APICacheSourceRedis      = "redis"
 	APICacheSourceClickHouse = "clickhouse"
 )
@@ -53,6 +60,13 @@ func ObserveAPIRequest(method, path, status string, dur time.Duration) {
 // APICacheSource* constants for source.
 func IncAPICacheHit(source string) {
 	APICacheHitsTotal.WithLabelValues(source).Inc()
+}
+
+// ObserveAPICacheHit records the wall-clock duration of a cache lookup
+// that resulted in a hit. Misses (which fall through to ClickHouse)
+// are bounded by the request-level api_request_duration_seconds.
+func ObserveAPICacheHit(source string, dur time.Duration) {
+	APICacheHitSeconds.WithLabelValues(source).Observe(dur.Seconds())
 }
 
 // IncAPIRateLimited bumps the rate-limit rejection counter.
