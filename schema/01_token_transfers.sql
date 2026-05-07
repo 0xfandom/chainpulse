@@ -15,7 +15,21 @@ CREATE TABLE IF NOT EXISTS token_transfers
     from_addr    String,
     to_addr      String,
     amount       String,        -- uint256 stringified
-    timestamp    DateTime
+    timestamp    DateTime,
+
+    -- Projections sized for the two read patterns the API exercises:
+    -- recent transfers from a wallet, and recent transfers to a wallet.
+    -- Backs /v1/token/{addr}/transfers wallet-side queries.
+    PROJECTION p_from_time
+    (
+        SELECT *
+        ORDER BY (from_addr, timestamp)
+    ),
+    PROJECTION p_to_time
+    (
+        SELECT *
+        ORDER BY (to_addr, timestamp)
+    )
 )
 ENGINE = ReplacingMergeTree(block_number)
 PARTITION BY toYYYYMM(timestamp)
