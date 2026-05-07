@@ -119,6 +119,7 @@ func run(configPath string) error {
 	decoder := ingestion.NewABIDecoder()
 
 	var kafkaUnhealthy atomic.Bool
+	var listenerDead atomic.Bool
 
 	for _, ch := range cfg.Chains {
 		ch := ch // capture
@@ -130,8 +131,12 @@ func run(configPath string) error {
 			if err := listener.Run(ctx); err != nil {
 				l := chainpulselog.Chain(c.Name, c.ChainID)
 				l.Error().Err(err).Msg("listener stopped with error")
-				if errors.Is(err, ingestion.ErrKafkaUnhealthy) {
+				switch {
+				case errors.Is(err, ingestion.ErrKafkaUnhealthy):
 					kafkaUnhealthy.Store(true)
+					cancel()
+				case errors.Is(err, ingestion.ErrChainListenerDead):
+					listenerDead.Store(true)
 					cancel()
 				}
 			}
@@ -150,6 +155,11 @@ func run(configPath string) error {
 	if kafkaUnhealthy.Load() {
 		logger.Error().Msg("indexer exiting non-zero due to kafka publish unhealthy")
 		return ingestion.ErrKafkaUnhealthy
+	}
+
+	if listenerDead.Load() {
+		logger.Error().Msg("indexer exiting non-zero due to chain listener exhausting reconnects")
+		return ingestion.ErrChainListenerDead
 	}
 
 	logger.Info().Msg("indexer stopped")

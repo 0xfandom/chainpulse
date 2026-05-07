@@ -19,11 +19,16 @@ import (
 )
 
 const (
-	reconnectInitialBackoff   = time.Second
-	reconnectMaxBackoff       = 30 * time.Second
-	reconnectMaxAttempts      = 10
 	defaultHeadTimeout        = 90 * time.Second
 	defaultKafkaFailThreshold = 5
+)
+
+// Reconnect cadence is held in package-level vars (not consts) so tests
+// can compress the wall-clock cost of an exhaustion run.
+var (
+	reconnectInitialBackoff = time.Second
+	reconnectMaxBackoff     = 30 * time.Second
+	reconnectMaxAttempts    = 10
 )
 
 // errHeadTimeout is returned by runOnce when no head arrives within the
@@ -36,6 +41,13 @@ var errHeadTimeout = errors.New("head watchdog timeout")
 // short-circuit the reconnect loop so docker can restart the indexer
 // instead of cycling WSS while kafka stays broken.
 var ErrKafkaUnhealthy = errors.New("kafka publish unhealthy: consecutive block failures exceeded threshold")
+
+// ErrChainListenerDead is returned by Run when the per-chain reconnect
+// budget is exhausted (e.g. provider returns 429 on every handshake).
+// cmd/indexer escalates this to a process-level exit so docker can
+// restart the indexer; otherwise the chain would silently drop out of
+// the pipeline for the lifetime of the process.
+var ErrChainListenerDead = errors.New("chain listener exhausted reconnect attempts")
 
 // ChainListener subscribes to a single chain's WebSocket head stream,
 // fetches logs per block, decodes them, and publishes to Kafka.
@@ -142,7 +154,7 @@ func (cl *ChainListener) Run(ctx context.Context) error {
 			backoff = reconnectMaxBackoff
 		}
 	}
-	return fmt.Errorf("listener %s: exhausted %d reconnect attempts", cl.cfg.Name, reconnectMaxAttempts)
+	return fmt.Errorf("%w: %s after %d attempts", ErrChainListenerDead, cl.cfg.Name, reconnectMaxAttempts)
 }
 
 // runOnce executes a single dial + subscription session. Returns nil if
