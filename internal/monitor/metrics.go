@@ -37,6 +37,14 @@ var (
 		Name: "chain_listener_connected",
 		Help: "1 if the chain listener has an active WebSocket subscription, 0 otherwise.",
 	}, []string{"chain"})
+
+	// KafkaPublishDuration measures the time spent writing a per-block
+	// batch of events to the raw_events topic.
+	KafkaPublishDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "kafka_publish_duration_seconds",
+		Help:    "Time spent writing a per-block batch of events to Kafka.",
+		Buckets: prometheus.ExponentialBuckets(0.0005, 2, 14), // 0.5ms .. ~8s
+	}, []string{"chain"})
 )
 
 // ObserveBlockProcessing records a single block-processing duration sample.
@@ -56,6 +64,11 @@ func SetListenerConnected(chain string, connected bool) {
 // IncRawEventsProduced bumps the produced-events counter for a chain/event.
 func IncRawEventsProduced(chain, eventName string) {
 	RawEventsProducedTotal.WithLabelValues(chain, eventName).Inc()
+}
+
+// ObserveKafkaPublish records a per-block Kafka batch publish duration.
+func ObserveKafkaPublish(chain string, dur time.Duration) {
+	KafkaPublishDuration.WithLabelValues(chain).Observe(dur.Seconds())
 }
 
 // ServeMetrics starts an HTTP server exposing /metrics on addr. It blocks

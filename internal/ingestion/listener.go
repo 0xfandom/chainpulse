@@ -217,16 +217,21 @@ func (cl *ChainListener) processBlock(ctx context.Context, client EthClient, hea
 		return
 	}
 
+	events := make([]*types.ChainEvent, 0, len(logs))
 	for i := range logs {
 		event, err := cl.decoder.Decode(cl.cfg.ChainID, logs[i], header.Time)
 		if err != nil {
 			continue // unrecognized event, skip silently
 		}
-		if err := cl.producer.Publish(ctx, event); err != nil {
+		events = append(events, event)
+	}
+
+	if len(events) > 0 {
+		if err := cl.producer.PublishBatch(ctx, events); err != nil {
 			cl.log.Error().Err(err).
 				Uint64(chainpulselog.FieldBlock, blockNum.Uint64()).
-				Str("event", event.EventName).
-				Msg("kafka publish failed")
+				Int("events", len(events)).
+				Msg("kafka publish batch failed")
 		}
 	}
 
