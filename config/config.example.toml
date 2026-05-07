@@ -61,6 +61,8 @@ bearer_token = "${MCP_BEARER_TOKEN}"  # empty = SSE runs unauthenticated; set wh
 # `confirmations` is the reorg-safety window — set higher on chains with
 # probabilistic finality (PoS Polygon) or known reorg patterns (BSC).
 # `start_block = 0` means "start from latest head."
+# `head_timeout` (optional, default 90s) caps the silent gap between WSS
+# heads before the listener forces a reconnect.
 
 [[chains]]
 chain_id      = 8453

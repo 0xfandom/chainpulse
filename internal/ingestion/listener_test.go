@@ -197,6 +197,126 @@ func TestRun_ConfirmationsLag(t *testing.T) {
 	}
 }
 
+// TestRun_HeadWatchdogFires asserts that with a short HeadTimeout and no
+// headers ever delivered, the listener exits its current session with
+// the watchdog error and the outer Run loop tears down on ctx cancel.
+// This guards against silent WSS death where sub.Err() never fires.
+func TestRun_HeadWatchdogFires(t *testing.T) {
+	cfg := types.ChainConfig{
+		ChainID:     8453,
+		Name:        "base",
+		RPCWSS:      "wss://example/ws",
+		HeadTimeout: types.Duration(80 * time.Millisecond),
+	}
+	dec := NewABIDecoder()
+
+	prod, err := NewProducer(ProducerConfig{Brokers: []string{"localhost:9092"}, Topic: "raw_events"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prod.Close()
+
+	headers := make(chan *ethtypes.Header)
+	subErr := make(chan error, 1)
+	fc := &fakeClient{headers: headers, subErr: subErr}
+
+	dialCalls := atomic.Int32{}
+	cl := NewChainListener(cfg, dec, prod).WithDialer(func(ctx context.Context, url string) (EthClient, error) {
+		dialCalls.Add(1)
+		return fc, nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- cl.Run(ctx) }()
+
+	// Watchdog should fire (~80ms), trigger a reconnect attempt; with no
+	// headers ever arriving, the outer loop keeps retrying until the
+	// context expires. Reconnect backoff starts at 1s, so dial #2 lands
+	// near t=1.1s. Wait up to 3s to absorb scheduler jitter on CI.
+	deadline := time.Now().Add(3 * time.Second)
+	for dialCalls.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not exit after cancel")
+	}
+	if got := dialCalls.Load(); got < 2 {
+		t.Errorf("dialCalls = %d, want >= 2 (watchdog should have triggered a reconnect)", got)
+	}
+}
+
+// TestRun_HeadWatchdogResetsOnHeader asserts that a steady stream of
+// headers spaced shorter than HeadTimeout does NOT trigger the
+// watchdog. Drives 5 headers spaced at 30ms with a 100ms timeout, then
+// cancels.
+func TestRun_HeadWatchdogResetsOnHeader(t *testing.T) {
+	cfg := types.ChainConfig{
+		ChainID:     8453,
+		Name:        "base",
+		RPCWSS:      "wss://example/ws",
+		HeadTimeout: types.Duration(100 * time.Millisecond),
+	}
+	dec := NewABIDecoder()
+
+	prod, err := NewProducer(ProducerConfig{Brokers: []string{"localhost:9092"}, Topic: "raw_events"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prod.Close()
+
+	headers := make(chan *ethtypes.Header, 1)
+	subErr := make(chan error, 1)
+
+	var filterCalls atomic.Int32
+	fc := &fakeClient{
+		headers: headers,
+		subErr:  subErr,
+		filterFn: func(ctx context.Context, q ethereum.FilterQuery) ([]ethtypes.Log, error) {
+			filterCalls.Add(1)
+			return nil, nil
+		},
+	}
+
+	dialCalls := atomic.Int32{}
+	cl := NewChainListener(cfg, dec, prod).WithDialer(func(ctx context.Context, url string) (EthClient, error) {
+		dialCalls.Add(1)
+		return fc, nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- cl.Run(ctx) }()
+
+	for n := int64(100); n < 105; n++ {
+		select {
+		case headers <- &ethtypes.Header{Number: big.NewInt(n), Time: 1_700_000_000}:
+		case <-time.After(time.Second):
+			t.Fatalf("send header %d timed out", n)
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not exit after cancel")
+	}
+	if got := dialCalls.Load(); got != 1 {
+		t.Errorf("dialCalls = %d, want 1 (no reconnect — watchdog must reset)", got)
+	}
+	if got := filterCalls.Load(); got < 5 {
+		t.Errorf("filterCalls = %d, want >= 5 (each header drives one)", got)
+	}
+}
+
 func TestParseContracts(t *testing.T) {
 	in := []string{"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "", "0x0000000000000000000000000000000000000001"}
 	out := parseContracts(in)
