@@ -19,7 +19,7 @@ client_id = "chainpulse"
 dsn            = "${CLICKHOUSE_DSN}"
 database       = "chainpulse"
 batch_size     = 1000        # flush after N rows
-batch_interval = "1s"        # flush at least every N (Go duration)
+batch_interval = "250ms"     # flush at least every N (Go duration)
 
 [redis]
 addr        = "${REDIS_ADDR}"

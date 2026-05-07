@@ -22,7 +22,8 @@ func (f *fakeBatch) Enqueue(_ context.Context, e *types.DecodedEvent) error {
 }
 
 type fakeCache struct {
-	incrs     [][3]string // wallet,token,delta
+	incrs     [][3]string // wallet,token,delta — single-side updates
+	pairs     [][4]string // from,to,token,amount — paired updates
 	positions []*types.WalletPosition
 	err       error
 }
@@ -32,6 +33,14 @@ func (f *fakeCache) IncrBalance(_ context.Context, _ uint64, wallet, token commo
 		return f.err
 	}
 	f.incrs = append(f.incrs, [3]string{wallet.Hex(), token.Hex(), delta.String()})
+	return nil
+}
+
+func (f *fakeCache) IncrBalancePair(_ context.Context, _ uint64, from, to, token common.Address, amount *big.Int) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.pairs = append(f.pairs, [4]string{from.Hex(), to.Hex(), token.Hex(), amount.String()})
 	return nil
 }
 
@@ -106,11 +115,14 @@ func TestAggregator_Transfer(t *testing.T) {
 	if len(b.calls) != 1 {
 		t.Errorf("batch enqueue calls = %d", len(b.calls))
 	}
-	if len(c.incrs) != 2 {
-		t.Errorf("balance updates = %d, want 2", len(c.incrs))
+	if len(c.incrs) != 0 {
+		t.Errorf("single-side incrs should not fire on transfer, got %d", len(c.incrs))
 	}
-	if c.incrs[0][2] != "-100" || c.incrs[1][2] != "100" {
-		t.Errorf("deltas = %v / %v", c.incrs[0][2], c.incrs[1][2])
+	if len(c.pairs) != 1 {
+		t.Fatalf("paired balance updates = %d, want 1", len(c.pairs))
+	}
+	if c.pairs[0][3] != "100" {
+		t.Errorf("pair amount = %v, want 100", c.pairs[0][3])
 	}
 	if len(p.decoded) != 1 || len(p.pos) != 0 {
 		t.Errorf("publishes = %d decoded / %d positions", len(p.decoded), len(p.pos))

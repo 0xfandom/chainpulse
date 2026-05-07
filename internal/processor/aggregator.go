@@ -24,6 +24,7 @@ type (
 	}
 	CacheWriterIface interface {
 		IncrBalance(ctx context.Context, chainID uint64, wallet, token common.Address, delta *big.Int) error
+		IncrBalancePair(ctx context.Context, chainID uint64, from, to, token common.Address, amount *big.Int) error
 		SetPosition(ctx context.Context, pos *types.WalletPosition) error
 	}
 	ProducerIface interface {
@@ -88,9 +89,9 @@ func (a *Aggregator) Process(ctx context.Context, e *types.DecodedEvent) error {
 	}
 }
 
-// handleTransfer persists the row, updates Redis balances both sides,
-// and publishes the decoded event. Self-transfers net to zero in
-// Redis because both calls fire.
+// handleTransfer persists the row, updates Redis balances on both
+// sides in a single pipelined round trip, and publishes the decoded
+// event. Self-transfers are skipped at the cache layer (net zero).
 func (a *Aggregator) handleTransfer(ctx context.Context, e *types.DecodedEvent) error {
 	if err := a.batch.Enqueue(ctx, e); err != nil {
 		return err
@@ -105,12 +106,7 @@ func (a *Aggregator) handleTransfer(ctx context.Context, e *types.DecodedEvent) 
 		return fmt.Errorf("aggregator transfer: bad amount %q", amountStr)
 	}
 	token := common.HexToAddress(tokenStr)
-	negAmount := new(big.Int).Neg(amount)
-
-	if err := a.cache.IncrBalance(ctx, e.ChainID, common.HexToAddress(from), token, negAmount); err != nil {
-		return err
-	}
-	if err := a.cache.IncrBalance(ctx, e.ChainID, common.HexToAddress(to), token, amount); err != nil {
+	if err := a.cache.IncrBalancePair(ctx, e.ChainID, common.HexToAddress(from), common.HexToAddress(to), token, amount); err != nil {
 		return err
 	}
 	return a.producer.PublishDecoded(ctx, e)

@@ -18,7 +18,7 @@ client_id              = "chainpulse"
 dsn            = "clickhouse://default:@clickhouse:9000/chainpulse"
 database       = "chainpulse"
 batch_size     = 1000
-batch_interval = "1s"
+batch_interval = "250ms"
 
 [redis]
 addr        = "redis:6379"

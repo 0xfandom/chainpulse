@@ -96,6 +96,51 @@ func (w *CacheWriter) IncrBalance(ctx context.Context, chainID uint64, wallet, t
 	return nil
 }
 
+// IncrBalancePair applies -amount to the sender's balance and +amount
+// to the receiver's balance for the same (chain, token) tuple in a
+// single pipelined round trip. Same int64-clamp + overflow-swallow
+// semantics as IncrBalance. Self-transfers (from == to) net to zero
+// and are skipped to avoid two cancelling HIncrBy ops.
+func (w *CacheWriter) IncrBalancePair(ctx context.Context, chainID uint64, from, to, token common.Address, amount *big.Int) error {
+	if amount == nil || amount.Sign() == 0 {
+		return nil
+	}
+	if from == to {
+		return nil
+	}
+	start := time.Now()
+	defer func() { monitor.ObserveRedisWrite(time.Since(start)) }()
+
+	pos, posClamped := clampInt64(amount)
+	neg, negClamped := clampInt64(new(big.Int).Neg(amount))
+	if posClamped || negClamped {
+		l := chainpulselog.Component("redis_writer")
+		l.Warn().
+			Str("from", from.Hex()).
+			Str("to", to.Hex()).
+			Str("token", token.Hex()).
+			Str("amount", amount.String()).
+			Msg("incr balance pair clamped to int64; large-value path not yet implemented")
+		monitor.IncProcessorError(monitor.ProcErrRedisWrite)
+	}
+
+	fromKey := balanceKey(from, chainID, token)
+	toKey := balanceKey(to, chainID, token)
+
+	_, err := w.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.HIncrBy(ctx, fromKey, "amount", neg)
+		pipe.HIncrBy(ctx, toKey, "amount", pos)
+		return nil
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "overflow") {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 // SetPosition writes the JSON-encoded position under the canonical key
 // position:{wallet}:{chain_id}:{protocol}:{position_type}:{token} with
 // the writer's default TTL.

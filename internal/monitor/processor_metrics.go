@@ -46,6 +46,14 @@ var (
 		Buckets: prometheus.ExponentialBuckets(0.0005, 2, 12),
 	})
 
+	// ProcessorEventProcessingSeconds tracks per-message wall-clock from
+	// Kafka fetch to successful aggregate + commit signal.
+	ProcessorEventProcessingSeconds = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "processor_event_processing_seconds",
+		Help:    "Wall-clock time to fetch, decode, aggregate, and acknowledge a single event.",
+		Buckets: prometheus.ExponentialBuckets(0.001, 2, 14), // 1ms .. ~16s
+	})
+
 	// ProcessorKafkaLagMessages is set by the consumer once per second
 	// from the underlying reader's stats. Labeled by topic and partition.
 	ProcessorKafkaLagMessages = promauto.NewGaugeVec(prometheus.GaugeOpts{
@@ -86,6 +94,11 @@ func ObserveClickHouseFlush(d time.Duration) {
 // ObserveRedisWrite records a single Redis write duration.
 func ObserveRedisWrite(d time.Duration) {
 	RedisWriteSeconds.Observe(d.Seconds())
+}
+
+// ObserveEventProcessing records a single per-message processing duration.
+func ObserveEventProcessing(d time.Duration) {
+	ProcessorEventProcessingSeconds.Observe(d.Seconds())
 }
 
 // SetKafkaConsumerLag updates the consumer lag gauge for a partition.

@@ -65,6 +65,48 @@ func TestCacheWriter_IncrBalance_ZeroNoop(t *testing.T) {
 	}
 }
 
+func TestCacheWriter_IncrBalancePair(t *testing.T) {
+	w, mr := newTestWriter(t)
+	from := common.HexToAddress("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	to := common.HexToAddress("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+	token := common.HexToAddress("0xcccccccccccccccccccccccccccccccccccccccc")
+
+	if err := w.IncrBalancePair(context.Background(), 8453, from, to, token, big.NewInt(100)); err != nil {
+		t.Fatal(err)
+	}
+	if got := mr.HGet(balanceKey(from, 8453, token), "amount"); got != "-100" {
+		t.Errorf("from balance = %q, want -100", got)
+	}
+	if got := mr.HGet(balanceKey(to, 8453, token), "amount"); got != "100" {
+		t.Errorf("to balance = %q, want 100", got)
+	}
+}
+
+func TestCacheWriter_IncrBalancePair_ZeroAmountNoop(t *testing.T) {
+	w, mr := newTestWriter(t)
+	from := common.HexToAddress("0xa")
+	to := common.HexToAddress("0xb")
+	token := common.HexToAddress("0xc")
+	if err := w.IncrBalancePair(context.Background(), 1, from, to, token, big.NewInt(0)); err != nil {
+		t.Fatal(err)
+	}
+	if keys := mr.Keys(); len(keys) != 0 {
+		t.Errorf("zero amount should not create keys, got %v", keys)
+	}
+}
+
+func TestCacheWriter_IncrBalancePair_SelfTransferNoop(t *testing.T) {
+	w, mr := newTestWriter(t)
+	wallet := common.HexToAddress("0xa")
+	token := common.HexToAddress("0xc")
+	if err := w.IncrBalancePair(context.Background(), 1, wallet, wallet, token, big.NewInt(100)); err != nil {
+		t.Fatal(err)
+	}
+	if keys := mr.Keys(); len(keys) != 0 {
+		t.Errorf("self-transfer should net to zero and skip writes, got %v", keys)
+	}
+}
+
 func TestCacheWriter_IncrBalance_ClampsLargeValue(t *testing.T) {
 	w, mr := newTestWriter(t)
 	wallet := common.HexToAddress("0xa")
