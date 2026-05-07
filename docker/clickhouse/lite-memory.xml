@@ -14,7 +14,7 @@ should pick their own caps based on real load.
     <max_server_memory_usage>536870912</max_server_memory_usage>           <!-- 512 MiB -->
     <max_server_memory_usage_to_ram_ratio>0</max_server_memory_usage_to_ram_ratio>
 
-    <background_pool_size>4</background_pool_size>
+    <background_pool_size>16</background_pool_size>
     <background_move_pool_size>2</background_move_pool_size>
     <background_fetches_pool_size>2</background_fetches_pool_size>
     <background_common_pool_size>2</background_common_pool_size>
@@ -24,4 +24,13 @@ should pick their own caps based on real load.
     <mark_cache_size>67108864</mark_cache_size>          <!-- 64 MiB -->
     <uncompressed_cache_size>67108864</uncompressed_cache_size>
     <max_concurrent_queries>32</max_concurrent_queries>
+
+    <merge_tree>
+        <!-- CH 24.3 sanity-checks number_of_free_entries_in_pool_to_execute_mutation
+             (default 20) <= background_pool_size * background_merges_mutations_concurrency_ratio
+             (4 * 2 = 8 here). Lower the threshold to keep the lean pool sizes
+             above. Mutations are rare in this workload (ReplacingMergeTree
+             dedup, no ALTER UPDATE/DELETE traffic) so 4 is safe. -->
+        <number_of_free_entries_in_pool_to_execute_mutation>4</number_of_free_entries_in_pool_to_execute_mutation>
+    </merge_tree>
 </clickhouse>
