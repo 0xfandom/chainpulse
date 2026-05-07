@@ -45,6 +45,7 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./schema:/docker-entrypoint-initdb.d:ro
+      - ./docker/clickhouse/lite-memory.xml:/etc/clickhouse-server/config.d/lite-memory.xml:ro
     ulimits:
       nofile:
         soft: 262144
@@ -61,7 +62,17 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
-    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    command:
+      - "redis-server"
+      - "--appendonly"
+      - "yes"
+      - "--save"
+      - "60"
+      - "1"
+      - "--maxmemory"
+      - "64mb"
+      - "--maxmemory-policy"
+      - "allkeys-lru"
     volumes:
       - redis_data:/data
     healthcheck:

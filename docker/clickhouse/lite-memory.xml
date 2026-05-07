@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!--
+ClickHouse memory caps for the local demo / bench-mem profile.
+
+Defaults assume the server has hundreds of GB and tunes background
+workers accordingly. On a single-host docker stack that translates to
+~300-512MB resident at idle, which dominates the per-stack memory
+budget called out in issue #161.
+
+These overrides are intentionally conservative — production deployments
+should pick their own caps based on real load.
+-->
+<clickhouse>
+    <max_server_memory_usage>536870912</max_server_memory_usage>           <!-- 512 MiB -->
+    <max_server_memory_usage_to_ram_ratio>0</max_server_memory_usage_to_ram_ratio>
+
+    <background_pool_size>4</background_pool_size>
+    <background_move_pool_size>2</background_move_pool_size>
+    <background_fetches_pool_size>2</background_fetches_pool_size>
+    <background_common_pool_size>2</background_common_pool_size>
+    <background_schedule_pool_size>4</background_schedule_pool_size>
+    <background_message_broker_schedule_pool_size>2</background_message_broker_schedule_pool_size>
+
+    <mark_cache_size>67108864</mark_cache_size>          <!-- 64 MiB -->
+    <uncompressed_cache_size>67108864</uncompressed_cache_size>
+    <max_concurrent_queries>32</max_concurrent_queries>
+</clickhouse>
