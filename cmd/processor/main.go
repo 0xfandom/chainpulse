@@ -49,6 +49,8 @@ func run(configPath string) error {
 	rootCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	chainNames := chainNameMap(cfg.Chains)
+
 	chCtx, chCancel := context.WithTimeout(rootCtx, 10*time.Second)
 	chConn, err := processor.DialClickHouse(chCtx, cfg.ClickHouse.DSN)
 	chCancel()
@@ -58,6 +60,7 @@ func run(configPath string) error {
 	batch, err := processor.NewBatchWriter(chConn, processor.BatchWriterConfig{
 		BatchSize:     cfg.ClickHouse.BatchSize,
 		BatchInterval: cfg.ClickHouse.BatchInterval.AsDuration(),
+		ChainNames:    chainNames,
 	})
 	if err != nil {
 		_ = chConn.Close()
@@ -77,7 +80,6 @@ func run(configPath string) error {
 		return fmt.Errorf("init redis: %w", err)
 	}
 
-	chainNames := chainNameMap(cfg.Chains)
 	prod, err := processor.NewProcessorProducer(processor.ProducerConfig{
 		Brokers:              cfg.Kafka.Brokers,
 		TopicDecodedEvents:   cfg.Kafka.TopicDecodedEvents,
