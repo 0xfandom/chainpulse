@@ -2,11 +2,12 @@
 # Secrets injected through .env (loaded by each service via env_file).
 
 [app]
-log_level              = "info"
-metrics_addr           = "${METRICS_ADDR}"  # set per service via compose environment
-health_addr            = ":9180"
-shutdown_timeout       = "30s"
-readiness_head_timeout = "60s"  # indexer-only: /ready flips to 503 if any chain head older than this
+log_level                    = "info"
+metrics_addr                 = "${METRICS_ADDR}"  # set per service via compose environment
+health_addr                  = ":9180"
+shutdown_timeout             = "30s"
+readiness_head_timeout       = "60s"  # indexer-only: /ready flips to 503 if any chain head older than this
+kafka_publish_fail_threshold = 5      # indexer-only: exit non-zero after N consecutive blocks with kafka publish failures
 
 [kafka]
 brokers                = ["kafka:9092"]

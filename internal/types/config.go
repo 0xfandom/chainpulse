@@ -28,6 +28,12 @@ type AppSection struct {
 	// older than this window flips /ready to 503 so docker can restart
 	// the container. Zero (unset) defaults to 60s.
 	ReadinessHeadTimeout Duration `toml:"readiness_head_timeout"`
+	// KafkaPublishFailThreshold caps the number of consecutive
+	// per-block kafka publish failures the indexer tolerates before
+	// returning ingestion.ErrKafkaUnhealthy. The process exits non-zero
+	// so docker restarts the container on a healthy broker. Zero
+	// (unset) defaults to 5.
+	KafkaPublishFailThreshold int `toml:"kafka_publish_fail_threshold"`
 }
 
 // KafkaConfig holds connection and topic settings for the Kafka pipeline.

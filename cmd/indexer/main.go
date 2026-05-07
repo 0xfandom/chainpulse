@@ -4,12 +4,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -116,15 +118,22 @@ func run(configPath string) error {
 
 	decoder := ingestion.NewABIDecoder()
 
+	var kafkaUnhealthy atomic.Bool
+
 	for _, ch := range cfg.Chains {
 		ch := ch // capture
 		wg.Add(1)
 		go func(c types.ChainConfig) {
 			defer wg.Done()
-			listener := ingestion.NewChainListener(c, decoder, producer)
+			listener := ingestion.NewChainListener(c, decoder, producer).
+				WithKafkaFailThreshold(cfg.App.KafkaPublishFailThreshold)
 			if err := listener.Run(ctx); err != nil {
 				l := chainpulselog.Chain(c.Name, c.ChainID)
 				l.Error().Err(err).Msg("listener stopped with error")
+				if errors.Is(err, ingestion.ErrKafkaUnhealthy) {
+					kafkaUnhealthy.Store(true)
+					cancel()
+				}
 			}
 		}(ch)
 	}
@@ -136,6 +145,11 @@ func run(configPath string) error {
 
 	if err := producer.Close(); err != nil {
 		logger.Error().Err(err).Msg("kafka producer close failed")
+	}
+
+	if kafkaUnhealthy.Load() {
+		logger.Error().Msg("indexer exiting non-zero due to kafka publish unhealthy")
+		return ingestion.ErrKafkaUnhealthy
 	}
 
 	logger.Info().Msg("indexer stopped")

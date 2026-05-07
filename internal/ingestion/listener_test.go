@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/segmentio/kafka-go"
 
 	"github.com/0xfandom/chainpulse/internal/types"
 )
@@ -314,6 +315,164 @@ func TestRun_HeadWatchdogResetsOnHeader(t *testing.T) {
 	}
 	if got := filterCalls.Load(); got < 5 {
 		t.Errorf("filterCalls = %d, want >= 5 (each header drives one)", got)
+	}
+}
+
+// erroringWriter is a messageWriter test double that fails every
+// WriteMessages call with the supplied error.
+type erroringWriter struct {
+	err   error
+	calls atomic.Int32
+}
+
+func (w *erroringWriter) WriteMessages(_ context.Context, _ ...kafka.Message) error {
+	w.calls.Add(1)
+	return w.err
+}
+
+func (w *erroringWriter) Close() error { return nil }
+
+// flakyWriter fails the first failsLeft calls and succeeds afterwards.
+type flakyWriter struct {
+	failsLeft atomic.Int32
+	calls     atomic.Int32
+}
+
+func (w *flakyWriter) WriteMessages(_ context.Context, _ ...kafka.Message) error {
+	w.calls.Add(1)
+	if w.failsLeft.Add(-1) >= 0 {
+		return errors.New("transient kafka write error")
+	}
+	return nil
+}
+
+func (w *flakyWriter) Close() error { return nil }
+
+// TestRun_KafkaPublishFailFastTriggersErrKafkaUnhealthy asserts that
+// repeated kafka publish failures across consecutive blocks bubble
+// ErrKafkaUnhealthy up out of Run instead of silently dropping events
+// or reconnecting WSS forever.
+func TestRun_KafkaPublishFailFastTriggersErrKafkaUnhealthy(t *testing.T) {
+	cfg := types.ChainConfig{
+		ChainID: 8453,
+		Name:    "base",
+		RPCWSS:  "wss://example/ws",
+		// Confirmations 0 so each head emits immediately; keeps the
+		// per-head -> per-publish mapping easy to reason about.
+	}
+
+	w := &erroringWriter{err: errors.New("connection refused")}
+	prod := newProducerWithWriter(w, "raw_events", map[uint64]string{8453: "base"})
+
+	headers := make(chan *ethtypes.Header, 4)
+	subErr := make(chan error, 1)
+	fc := &fakeClient{
+		headers: headers,
+		subErr:  subErr,
+		filterFn: func(_ context.Context, _ ethereum.FilterQuery) ([]ethtypes.Log, error) {
+			return []ethtypes.Log{fixtureBaseUSDCTransfer}, nil
+		},
+	}
+
+	cl := NewChainListener(cfg, NewABIDecoder(), prod).
+		WithDialer(func(_ context.Context, _ string) (EthClient, error) { return fc, nil }).
+		WithKafkaFailThreshold(2)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- cl.Run(ctx) }()
+
+	// Two heads => two publish attempts => streak 2 => ErrKafkaUnhealthy.
+	headers <- &ethtypes.Header{Number: big.NewInt(100), Time: 1_700_000_000}
+	headers <- &ethtypes.Header{Number: big.NewInt(101), Time: 1_700_000_001}
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrKafkaUnhealthy) {
+			t.Fatalf("Run returned %v, want ErrKafkaUnhealthy", err)
+		}
+	case <-time.After(2 * time.Second):
+		cancel()
+		<-done
+		t.Fatal("Run did not exit after streak reached threshold")
+	}
+
+	if got := w.calls.Load(); got < 2 {
+		t.Errorf("writer.calls = %d, want >= 2 (each block should attempt publish before fail-fast)", got)
+	}
+}
+
+// TestRun_KafkaPublishFailureDoesNotAdvance asserts that a transient
+// publish failure leaves lastEmitted unchanged so the next head re-tries
+// the missing block in order. After the broker recovers the listener
+// catches up without dropping the originally-failing block.
+func TestRun_KafkaPublishFailureDoesNotAdvance(t *testing.T) {
+	cfg := types.ChainConfig{
+		ChainID: 8453,
+		Name:    "base",
+		RPCWSS:  "wss://example/ws",
+	}
+
+	w := &flakyWriter{}
+	w.failsLeft.Store(1) // first publish fails, subsequent succeed
+	prod := newProducerWithWriter(w, "raw_events", map[uint64]string{8453: "base"})
+
+	headers := make(chan *ethtypes.Header, 4)
+	subErr := make(chan error, 1)
+
+	var filterCalls atomic.Int32
+	fc := &fakeClient{
+		headers: headers,
+		subErr:  subErr,
+		filterFn: func(_ context.Context, _ ethereum.FilterQuery) ([]ethtypes.Log, error) {
+			filterCalls.Add(1)
+			return []ethtypes.Log{fixtureBaseUSDCTransfer}, nil
+		},
+	}
+
+	cl := NewChainListener(cfg, NewABIDecoder(), prod).
+		WithDialer(func(_ context.Context, _ string) (EthClient, error) { return fc, nil }).
+		WithKafkaFailThreshold(5)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- cl.Run(ctx) }()
+
+	// Head 100 will trigger publish for block 100, which fails. Head
+	// 101 should retry block 100 first (no-advance), then publish 101.
+	headers <- &ethtypes.Header{Number: big.NewInt(100), Time: 1_700_000_000}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for filterCalls.Load() < 1 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	headers <- &ethtypes.Header{Number: big.NewInt(101), Time: 1_700_000_001}
+
+	deadline = time.Now().Add(2 * time.Second)
+	for w.calls.Load() < 3 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not exit on cancel")
+	}
+
+	// Expected sequence: publish(100) fails -> publish(100) retries on
+	// next head, succeeds -> publish(101) succeeds. Three writer calls.
+	if got := w.calls.Load(); got != 3 {
+		t.Errorf("writer.calls = %d, want 3 (fail at 100 + retry 100 + publish 101)", got)
+	}
+	if got := cl.lastEmitted; got != 101 {
+		t.Errorf("lastEmitted = %d, want 101", got)
+	}
+	if got := cl.kafkaFailStreak; got != 0 {
+		t.Errorf("kafkaFailStreak = %d, want 0 after recovery", got)
 	}
 }
 

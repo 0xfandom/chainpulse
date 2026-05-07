@@ -19,16 +19,23 @@ import (
 )
 
 const (
-	reconnectInitialBackoff = time.Second
-	reconnectMaxBackoff     = 30 * time.Second
-	reconnectMaxAttempts    = 10
-	defaultHeadTimeout      = 90 * time.Second
+	reconnectInitialBackoff   = time.Second
+	reconnectMaxBackoff       = 30 * time.Second
+	reconnectMaxAttempts      = 10
+	defaultHeadTimeout        = 90 * time.Second
+	defaultKafkaFailThreshold = 5
 )
 
 // errHeadTimeout is returned by runOnce when no head arrives within the
 // configured watchdog window. Surfaced as an error so the existing
 // reconnect loop kicks in.
 var errHeadTimeout = errors.New("head watchdog timeout")
+
+// ErrKafkaUnhealthy is returned by Run when the producer has failed to
+// publish for too many consecutive blocks. Wrapped errors from main
+// short-circuit the reconnect loop so docker can restart the indexer
+// instead of cycling WSS while kafka stays broken.
+var ErrKafkaUnhealthy = errors.New("kafka publish unhealthy: consecutive block failures exceeded threshold")
 
 // ChainListener subscribes to a single chain's WebSocket head stream,
 // fetches logs per block, decodes them, and publishes to Kafka.
@@ -40,12 +47,14 @@ var errHeadTimeout = errors.New("head watchdog timeout")
 // reorged out. Confirmations = 0 disables the lag (head emits
 // immediately).
 type ChainListener struct {
-	cfg         types.ChainConfig
-	decoder     *ABIDecoder
-	producer    *Producer
-	dialer      Dialer
-	log         zerolog.Logger
-	lastEmitted uint64 // last safe block published; 0 = uninitialized
+	cfg                types.ChainConfig
+	decoder            *ABIDecoder
+	producer           *Producer
+	dialer             Dialer
+	log                zerolog.Logger
+	lastEmitted        uint64 // last safe block published; 0 = uninitialized
+	kafkaFailStreak    int    // consecutive blocks for which kafka publish failed
+	kafkaFailThreshold int    // streak count that triggers ErrKafkaUnhealthy
 }
 
 // Dialer abstracts ethclient.DialContext so tests can inject a fake.
@@ -70,14 +79,17 @@ func defaultDialer(ctx context.Context, url string) (EthClient, error) {
 }
 
 // NewChainListener constructs a listener for cfg using the supplied decoder
-// and producer. Dialer defaults to ethclient.DialContext.
+// and producer. Dialer defaults to ethclient.DialContext. Kafka fail-fast
+// threshold defaults to defaultKafkaFailThreshold; override with
+// WithKafkaFailThreshold.
 func NewChainListener(cfg types.ChainConfig, decoder *ABIDecoder, producer *Producer) *ChainListener {
 	return &ChainListener{
-		cfg:      cfg,
-		decoder:  decoder,
-		producer: producer,
-		dialer:   defaultDialer,
-		log:      chainpulselog.Chain(cfg.Name, cfg.ChainID).With().Str(chainpulselog.FieldComponent, "chain_listener").Logger(),
+		cfg:                cfg,
+		decoder:            decoder,
+		producer:           producer,
+		dialer:             defaultDialer,
+		log:                chainpulselog.Chain(cfg.Name, cfg.ChainID).With().Str(chainpulselog.FieldComponent, "chain_listener").Logger(),
+		kafkaFailThreshold: defaultKafkaFailThreshold,
 	}
 }
 
@@ -87,9 +99,23 @@ func (cl *ChainListener) WithDialer(d Dialer) *ChainListener {
 	return cl
 }
 
+// WithKafkaFailThreshold sets the consecutive-block kafka-publish failure
+// count that triggers ErrKafkaUnhealthy. Values <= 0 leave the default
+// (5) in place.
+func (cl *ChainListener) WithKafkaFailThreshold(n int) *ChainListener {
+	if n > 0 {
+		cl.kafkaFailThreshold = n
+	}
+	return cl
+}
+
 // Run blocks until ctx is cancelled or the reconnection budget is exhausted.
 // Reconnects with exponential backoff (1s -> 30s cap, max 10 attempts) on
 // subscription error or initial dial failure.
+//
+// ErrKafkaUnhealthy short-circuits the reconnect loop: reconnecting WSS
+// does not help when kafka is the bug, so the error bubbles up and the
+// indexer process exits non-zero for docker to restart.
 func (cl *ChainListener) Run(ctx context.Context) error {
 	backoff := reconnectInitialBackoff
 	for attempt := 0; attempt < reconnectMaxAttempts; attempt++ {
@@ -99,6 +125,10 @@ func (cl *ChainListener) Run(ctx context.Context) error {
 		err := cl.runOnce(ctx)
 		if err == nil || ctx.Err() != nil {
 			return nil
+		}
+		if errors.Is(err, ErrKafkaUnhealthy) {
+			monitor.SetListenerConnected(cl.cfg.Name, false)
+			return err
 		}
 		cl.log.Warn().Err(err).Int("attempt", attempt+1).Dur("backoff", backoff).Msg("reconnecting")
 		monitor.SetListenerConnected(cl.cfg.Name, false)
@@ -176,7 +206,9 @@ func (cl *ChainListener) runOnce(ctx context.Context) error {
 				}
 			}
 			watchdog.Reset(headTimeout)
-			cl.onNewHead(ctx, client, header)
+			if err := cl.onNewHead(ctx, client, header); err != nil {
+				return err
+			}
 		}
 	}
 }
@@ -186,14 +218,22 @@ func (cl *ChainListener) runOnce(ctx context.Context) error {
 // head-Confirmations] it fetches the block header (or reuses the
 // supplied head when Confirmations = 0) and routes it through
 // processBlock.
-func (cl *ChainListener) onNewHead(ctx context.Context, client EthClient, head *ethtypes.Header) {
+//
+// On a kafka publish failure, lastEmitted is NOT advanced for the
+// failing block; the caller's next head will retry from the same point.
+// kafkaFailStreak counts consecutive failures across blocks; on
+// reaching kafkaFailThreshold the function returns ErrKafkaUnhealthy
+// so Run can exit and let docker restart the process. Other transient
+// errors (FilterLogs, HeaderByNumber) follow the original behaviour:
+// log and return without advancing.
+func (cl *ChainListener) onNewHead(ctx context.Context, client EthClient, head *ethtypes.Header) error {
 	if head.Number == nil {
-		return
+		return nil
 	}
 	headNum := head.Number.Uint64()
 	conf := cl.cfg.Confirmations
 	if headNum < conf {
-		return
+		return nil
 	}
 	safe := headNum - conf
 
@@ -202,8 +242,11 @@ func (cl *ChainListener) onNewHead(ctx context.Context, client EthClient, head *
 		// forward; do not backfill arbitrarily deep history.
 		if safe == 0 {
 			cl.lastEmitted = 0
-			cl.processBlock(ctx, client, head)
-			return
+			if err := cl.processBlock(ctx, client, head); err != nil {
+				return cl.recordPublishFailure(err)
+			}
+			cl.kafkaFailStreak = 0
+			return nil
 		}
 		cl.lastEmitted = safe - 1
 	}
@@ -216,22 +259,47 @@ func (cl *ChainListener) onNewHead(ctx context.Context, client EthClient, head *
 			h, err := client.HeaderByNumber(ctx, new(big.Int).SetUint64(n))
 			if err != nil {
 				cl.log.Error().Err(err).Uint64(chainpulselog.FieldBlock, n).Msg("header by number failed")
-				return
+				return nil
 			}
 			bh = h
 		}
-		cl.processBlock(ctx, client, bh)
+		if err := cl.processBlock(ctx, client, bh); err != nil {
+			return cl.recordPublishFailure(err)
+		}
+		cl.kafkaFailStreak = 0
 		cl.lastEmitted = n
 	}
+	return nil
+}
+
+// recordPublishFailure increments the consecutive-failure streak and
+// returns ErrKafkaUnhealthy when the threshold is reached. Any prior
+// publish error is wrapped in the returned sentinel so callers can
+// match it via errors.Is.
+func (cl *ChainListener) recordPublishFailure(err error) error {
+	cl.kafkaFailStreak++
+	if cl.kafkaFailStreak >= cl.kafkaFailThreshold {
+		cl.log.Error().
+			Int("streak", cl.kafkaFailStreak).
+			Int("threshold", cl.kafkaFailThreshold).
+			Err(err).
+			Msg("kafka publish unhealthy; failing fast for docker restart")
+		return fmt.Errorf("%w: %v", ErrKafkaUnhealthy, err)
+	}
+	return nil
 }
 
 // processBlock fetches the logs for header.Number, decodes them, and
-// publishes recognized events to Kafka.
-func (cl *ChainListener) processBlock(ctx context.Context, client EthClient, header *ethtypes.Header) {
+// publishes recognized events to Kafka. Returns the publish error so
+// the caller can decide whether to advance the cursor or trigger
+// fail-fast. Decode/FilterLogs errors are logged and swallowed; the
+// caller does not advance but does not count those toward the kafka
+// streak.
+func (cl *ChainListener) processBlock(ctx context.Context, client EthClient, header *ethtypes.Header) error {
 	start := time.Now()
 	blockNum := header.Number
 	if blockNum == nil {
-		return
+		return nil
 	}
 
 	q := ethereum.FilterQuery{FromBlock: blockNum, ToBlock: blockNum}
@@ -242,7 +310,7 @@ func (cl *ChainListener) processBlock(ctx context.Context, client EthClient, hea
 	logs, err := client.FilterLogs(ctx, q)
 	if err != nil {
 		cl.log.Error().Err(err).Uint64(chainpulselog.FieldBlock, blockNum.Uint64()).Msg("filter logs failed")
-		return
+		return nil
 	}
 
 	events := make([]*types.ChainEvent, 0, len(logs))
@@ -261,12 +329,13 @@ func (cl *ChainListener) processBlock(ctx context.Context, client EthClient, hea
 				Int("events", len(events)).
 				Msg("kafka publish batch failed")
 			monitor.ObserveBlockProcessing(cl.cfg.Name, time.Since(start))
-			return
+			return err
 		}
 	}
 
 	monitor.RecordHead(cl.cfg.Name)
 	monitor.ObserveBlockProcessing(cl.cfg.Name, time.Since(start))
+	return nil
 }
 
 // parseContracts converts string contract addresses from config into
