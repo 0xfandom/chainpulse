@@ -180,7 +180,7 @@ docker compose exec -T indexer /app/indexer -healthcheck -probe-url http://local
 echo $?    # should print 0 once chains have caught up
 
 # Latest indexed block per chain (replace 8453 with whichever chain id you enabled)
-curl http://localhost:8080/v1/chains/8453/blocks?limit=1
+curl http://localhost:8080/v1/chain/8453/blocks?limit=1
 ```
 
 If those work, the pipeline is alive: blocks are flowing from RPC to indexer to Kafka to processor to ClickHouse, and the API can read them back.
@@ -329,13 +329,13 @@ REST endpoints (Gin server on `:8080`):
 |---|---|---|
 | GET | `/health` | Liveness probe |
 | GET | `/metrics` | Prometheus metrics |
-| GET | `/v1/wallets/:addr/positions` | DeFi positions |
-| GET | `/v1/wallets/:addr/balances?chain_id=N` | Per-token balances |
-| GET | `/v1/wallets/:addr/history?limit=N` | Recent decoded events |
-| GET | `/v1/tokens/:addr/transfers?limit=N` | Recent transfers for a token |
-| GET | `/v1/protocols/:name/stats` | 24h aggregates per chain |
-| GET | `/v1/chains/:id/blocks?limit=N` | Latest indexed blocks |
-| GET | `/v1/events` | WebSocket: live decoded events |
+| GET | `/v1/wallet/:address/positions` | DeFi positions |
+| GET | `/v1/wallet/:address/balances?chain_id=N` | Per-token balances |
+| GET | `/v1/wallet/:address/history?limit=N` | Recent decoded events |
+| GET | `/v1/token/:address/transfers?limit=N` | Recent transfers for a token |
+| GET | `/v1/protocol/:name/stats` | 24h aggregates per chain |
+| GET | `/v1/chain/:id/blocks?limit=N` | Latest indexed blocks |
+| GET | `/v1/events/stream` | WebSocket: live decoded events |
 
 All wallet and token addresses are lowercase-normalised server-side.
 
