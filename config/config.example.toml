@@ -8,6 +8,7 @@ health_addr                  = ":9180"    # /health (liveness) and /ready (readi
 shutdown_timeout             = "30s"      # max time to drain in-flight work on SIGINT/SIGTERM
 readiness_head_timeout       = "60s"      # indexer-only: /ready returns 503 if any chain head older than this; default 60s
 kafka_publish_fail_threshold = 5          # indexer-only: exit non-zero after N consecutive blocks with kafka publish failures (default 5)
+chain_dial_stagger           = "0s"       # indexer-only: delay between successive chain WSS dials at startup; "1s"-"2s" if your provider 429s on burst
 
 [kafka]
 brokers = ["localhost:9092"]

@@ -8,6 +8,7 @@ health_addr                  = ":9180"
 shutdown_timeout             = "30s"
 readiness_head_timeout       = "60s"  # indexer-only: /ready flips to 503 if any chain head older than this
 kafka_publish_fail_threshold = 5      # indexer-only: exit non-zero after N consecutive blocks with kafka publish failures
+chain_dial_stagger           = "1s"   # indexer-only: stagger initial WSS dials by N*1s; protects free-tier RPCs from 429 burst on 9-chain default
 
 [kafka]
 brokers                = ["kafka:9092"]

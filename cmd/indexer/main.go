@@ -121,11 +121,24 @@ func run(configPath string) error {
 	var kafkaUnhealthy atomic.Bool
 	var listenerDead atomic.Bool
 
-	for _, ch := range cfg.Chains {
+	stagger := cfg.App.ChainDialStagger.AsDuration()
+	if stagger > 0 {
+		logger.Info().Dur("stagger", stagger).Int("chains", len(cfg.Chains)).Msg("staggering chain listener startup")
+	}
+
+	for i, ch := range cfg.Chains {
 		ch := ch // capture
+		idx := i
 		wg.Add(1)
 		go func(c types.ChainConfig) {
 			defer wg.Done()
+			if stagger > 0 && idx > 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(stagger * time.Duration(idx)):
+				}
+			}
 			listener := ingestion.NewChainListener(c, decoder, producer).
 				WithKafkaFailThreshold(cfg.App.KafkaPublishFailThreshold)
 			if err := listener.Run(ctx); err != nil {
