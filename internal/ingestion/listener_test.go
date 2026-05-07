@@ -476,6 +476,40 @@ func TestRun_KafkaPublishFailureDoesNotAdvance(t *testing.T) {
 	}
 }
 
+// TestRun_ReturnsErrChainListenerDeadOnExhaustion verifies the Run loop
+// wraps its terminal error in ErrChainListenerDead so cmd/indexer can
+// escalate to a process-level exit. Without that, a chain whose
+// provider rejects every dial would silently drop out of the indexer
+// for the lifetime of the process (issue #174).
+func TestRun_ReturnsErrChainListenerDeadOnExhaustion(t *testing.T) {
+	prevInit, prevMax, prevAttempts := reconnectInitialBackoff, reconnectMaxBackoff, reconnectMaxAttempts
+	reconnectInitialBackoff = 5 * time.Millisecond
+	reconnectMaxBackoff = 10 * time.Millisecond
+	reconnectMaxAttempts = 3
+	t.Cleanup(func() {
+		reconnectInitialBackoff = prevInit
+		reconnectMaxBackoff = prevMax
+		reconnectMaxAttempts = prevAttempts
+	})
+
+	cfg := types.ChainConfig{ChainID: 8453, Name: "base", RPCWSS: "wss://example/ws"}
+	cl := NewChainListener(cfg, NewABIDecoder(), &Producer{chainNames: map[uint64]string{8453: "base"}}).
+		WithDialer(func(_ context.Context, _ string) (EthClient, error) {
+			return nil, errors.New("permanent dial failure")
+		})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := cl.Run(ctx)
+	if err == nil {
+		t.Fatalf("Run returned nil, want ErrChainListenerDead")
+	}
+	if !errors.Is(err, ErrChainListenerDead) {
+		t.Fatalf("Run returned %v, want ErrChainListenerDead", err)
+	}
+}
+
 func TestParseContracts(t *testing.T) {
 	in := []string{"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "", "0x0000000000000000000000000000000000000001"}
 	out := parseContracts(in)
