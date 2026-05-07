@@ -57,6 +57,10 @@ type BatchConn interface {
 type BatchWriterConfig struct {
 	BatchSize     int
 	BatchInterval time.Duration
+	// ChainNames maps chain_id to a human-readable label used by the
+	// block_to_queryable_seconds histogram. Missing ids fall back to
+	// "chain_<id>".
+	ChainNames map[uint64]string
 }
 
 // BatchWriter buffers decoded events and flushes them to ClickHouse in
@@ -66,8 +70,9 @@ type BatchWriterConfig struct {
 // (chain_id, block_number, log_index). Re-inserting a row collapses on
 // background merge — no app-side dedup required.
 type BatchWriter struct {
-	conn BatchConn
-	cfg  BatchWriterConfig
+	conn       BatchConn
+	cfg        BatchWriterConfig
+	chainNames map[uint64]string
 
 	mu        sync.Mutex
 	transfers []TransferRow
@@ -92,9 +97,10 @@ func NewBatchWriter(conn BatchConn, cfg BatchWriterConfig) (*BatchWriter, error)
 	}
 
 	w := &BatchWriter{
-		conn: conn,
-		cfg:  cfg,
-		stop: make(chan struct{}),
+		conn:       conn,
+		cfg:        cfg,
+		chainNames: cfg.ChainNames,
+		stop:       make(chan struct{}),
 	}
 	w.wg.Add(1)
 	go w.runFlushLoop()
@@ -188,6 +194,7 @@ func (w *BatchWriter) flushTransfers(ctx context.Context) {
 		return
 	}
 	monitor.ObserveClickHouseFlush(time.Since(start))
+	w.observeQueryableLag(rows, nil)
 }
 
 func (w *BatchWriter) flushDefi(ctx context.Context) {
@@ -208,6 +215,30 @@ func (w *BatchWriter) flushDefi(ctx context.Context) {
 		return
 	}
 	monitor.ObserveClickHouseFlush(time.Since(start))
+	w.observeQueryableLag(nil, rows)
+}
+
+// observeQueryableLag emits one BlockToQueryableSeconds observation per
+// row. Either rows slice may be nil; the other is the one that just
+// flushed. Time.Now() is sampled once for the whole batch — sub-row
+// drift is dwarfed by the multi-second SLO.
+func (w *BatchWriter) observeQueryableLag(transfers []TransferRow, defi []DefiEventRow) {
+	now := time.Now()
+	for i := range transfers {
+		monitor.ObserveBlockToQueryable(w.chainLabel(transfers[i].ChainID), now.Sub(transfers[i].Timestamp))
+	}
+	for i := range defi {
+		monitor.ObserveBlockToQueryable(w.chainLabel(defi[i].ChainID), now.Sub(defi[i].Timestamp))
+	}
+}
+
+// chainLabel renders a chain id into the histogram label, falling back
+// to chain_<id> when the name map is missing or unset.
+func (w *BatchWriter) chainLabel(id uint64) string {
+	if name, ok := w.chainNames[id]; ok && name != "" {
+		return name
+	}
+	return fmt.Sprintf("chain_%d", id)
 }
 
 // Close flushes outstanding rows and shuts down the background loop.

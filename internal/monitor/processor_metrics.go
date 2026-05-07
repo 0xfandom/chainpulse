@@ -54,6 +54,22 @@ var (
 		Buckets: prometheus.ExponentialBuckets(0.001, 2, 14), // 1ms .. ~16s
 	})
 
+	// BlockToQueryableSeconds is the end-to-end SLO signal: time between
+	// the on-chain block timestamp and the moment the row lands in
+	// ClickHouse and is queryable via the API. Includes confirmation
+	// lag, RPC fetch, Kafka publish, processor decode, and CH batch
+	// flush. Labeled by chain so per-chain SLOs (fast L2 vs Eth/Polygon
+	// finality-bound) can be tracked separately.
+	//
+	// Caveat: chain block timestamps are seconds-precision and can be a
+	// few seconds behind wall-clock at the indexer; treat sub-second
+	// observations as noise.
+	BlockToQueryableSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "block_to_queryable_seconds",
+		Help:    "Time from on-chain block timestamp to ClickHouse-queryable, labeled by chain.",
+		Buckets: prometheus.ExponentialBuckets(0.25, 2, 14), // 250ms .. ~68min
+	}, []string{"chain"})
+
 	// ProcessorKafkaLagMessages is set by the consumer once per second
 	// from the underlying reader's stats. Labeled by topic and partition.
 	ProcessorKafkaLagMessages = promauto.NewGaugeVec(prometheus.GaugeOpts{
@@ -99,6 +115,12 @@ func ObserveRedisWrite(d time.Duration) {
 // ObserveEventProcessing records a single per-message processing duration.
 func ObserveEventProcessing(d time.Duration) {
 	ProcessorEventProcessingSeconds.Observe(d.Seconds())
+}
+
+// ObserveBlockToQueryable records the end-to-end lag for a single row
+// landing in ClickHouse, keyed by chain label.
+func ObserveBlockToQueryable(chain string, d time.Duration) {
+	BlockToQueryableSeconds.WithLabelValues(chain).Observe(d.Seconds())
 }
 
 // SetKafkaConsumerLag updates the consumer lag gauge for a partition.

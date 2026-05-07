@@ -235,6 +235,47 @@ func TestBatchWriter_FlushErrorMetric(t *testing.T) {
 	// flush triggers synchronously due to BatchSize=1
 }
 
+func TestBatchWriter_ChainLabelFallback(t *testing.T) {
+	w := &BatchWriter{chainNames: map[uint64]string{8453: "base"}}
+	if got := w.chainLabel(8453); got != "base" {
+		t.Errorf("known id label = %q, want %q", got, "base")
+	}
+	if got := w.chainLabel(42); got != "chain_42" {
+		t.Errorf("unknown id label = %q, want chain_42", got)
+	}
+	wEmpty := &BatchWriter{}
+	if got := wEmpty.chainLabel(1); got != "chain_1" {
+		t.Errorf("empty map label = %q, want chain_1", got)
+	}
+}
+
+func TestBatchWriter_QueryableLagObserved(t *testing.T) {
+	conn := &fakeBatchConn{}
+	w, err := NewBatchWriter(conn, BatchWriterConfig{
+		BatchSize:     1,
+		BatchInterval: time.Hour,
+		ChainNames:    map[uint64]string{8453: "base"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close(context.Background())
+
+	// Recent timestamp so the histogram observation lands in a small
+	// non-negative bucket; we don't read the histogram here, only assert
+	// the path doesn't panic and the row reaches the conn.
+	ev := makeTransferEvent("1")
+	ev.Timestamp = time.Now().Add(-2 * time.Second)
+	if err := w.Enqueue(context.Background(), ev); err != nil {
+		t.Fatal(err)
+	}
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+	if len(conn.transferBatches) != 1 {
+		t.Fatalf("transfer batches = %d, want 1", len(conn.transferBatches))
+	}
+}
+
 func TestBatchWriter_CloseFlushesRemaining(t *testing.T) {
 	conn := &fakeBatchConn{}
 	w, err := NewBatchWriter(conn, BatchWriterConfig{BatchSize: 100, BatchInterval: time.Hour})
