@@ -33,8 +33,8 @@ else
   COMPOSE_ARGS=(-f docker-compose.yml)
 fi
 
-echo "==> bringing stack up"
-docker compose "${COMPOSE_ARGS[@]}" up -d --build >/dev/null
+echo "==> bringing stack up (skipping grafana — bench reads docker stats directly, no dashboard needed)"
+docker compose "${COMPOSE_ARGS[@]}" up -d --build --scale grafana=0 >/dev/null
 
 echo "==> waiting 20s for warmup"
 sleep 20
