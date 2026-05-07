@@ -6,10 +6,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/0xfandom/chainpulse/internal/config"
 	"github.com/0xfandom/chainpulse/internal/ingestion"
@@ -22,12 +24,37 @@ var version = "dev"
 
 func main() {
 	configPath := flag.String("config", "config/config.toml", "path to TOML config file")
+	probe := flag.Bool("healthcheck", false, "run readiness probe against -probe-url and exit 0 on 200, 1 otherwise")
+	probeURL := flag.String("probe-url", "http://localhost:9180/ready", "URL used by -healthcheck probe")
 	flag.Parse()
+
+	if *probe {
+		os.Exit(runProbe(*probeURL))
+	}
 
 	if err := run(*configPath); err != nil {
 		fmt.Fprintf(os.Stderr, "indexer: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// runProbe performs a single GET against url and returns 0 when the
+// response status is 2xx, 1 otherwise. Used as the docker healthcheck
+// command on the indexer's distroless image, which has no shell or
+// wget.
+func runProbe(url string) int {
+	client := &http.Client{Timeout: 4 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck: GET %s: %v\n", url, err)
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return 0
+	}
+	fmt.Fprintf(os.Stderr, "healthcheck: GET %s: status %d\n", url, resp.StatusCode)
+	return 1
 }
 
 func run(configPath string) error {
@@ -43,6 +70,11 @@ func run(configPath string) error {
 	chainNames := make(map[uint64]string, len(cfg.Chains))
 	for _, c := range cfg.Chains {
 		chainNames[c.ChainID] = c.Name
+	}
+
+	monitor.EnableReadiness(cfg.App.ReadinessHeadTimeout.AsDuration())
+	for _, c := range cfg.Chains {
+		monitor.RegisterChain(c.Name)
 	}
 
 	producer, err := ingestion.NewProducer(ingestion.ProducerConfig{

@@ -232,9 +232,12 @@ func (cl *ChainListener) processBlock(ctx context.Context, client EthClient, hea
 				Uint64(chainpulselog.FieldBlock, blockNum.Uint64()).
 				Int("events", len(events)).
 				Msg("kafka publish batch failed")
+			monitor.ObserveBlockProcessing(cl.cfg.Name, time.Since(start))
+			return
 		}
 	}
 
+	monitor.RecordHead(cl.cfg.Name)
 	monitor.ObserveBlockProcessing(cl.cfg.Name, time.Since(start))
 }
 

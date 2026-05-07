@@ -23,6 +23,11 @@ type AppSection struct {
 	MetricsAddr     string   `toml:"metrics_addr"`
 	HealthAddr      string   `toml:"health_addr"`
 	ShutdownTimeout Duration `toml:"shutdown_timeout"`
+	// ReadinessHeadTimeout sets the per-chain head-staleness threshold
+	// used by /ready in the indexer. A chain whose most recent head is
+	// older than this window flips /ready to 503 so docker can restart
+	// the container. Zero (unset) defaults to 60s.
+	ReadinessHeadTimeout Duration `toml:"readiness_head_timeout"`
 }
 
 // KafkaConfig holds connection and topic settings for the Kafka pipeline.
