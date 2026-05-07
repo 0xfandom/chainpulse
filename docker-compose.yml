@@ -31,6 +31,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+      start_period: 30s
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.3
@@ -103,6 +104,13 @@ services:
       - ./config/config.docker.toml:/etc/chainpulse/config.toml:ro
     expose:
       - "9100"
+      - "9180"
+    healthcheck:
+      test: ["CMD", "/app/indexer", "-healthcheck", "-probe-url", "http://localhost:9180/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
 
   processor:
     build:

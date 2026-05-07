@@ -2,10 +2,11 @@
 # Secrets (RPC keys, DB DSNs) live in .env — referenced here as ${VAR}.
 
 [app]
-log_level        = "info"     # debug | info | warn | error
-metrics_addr     = ":9100"    # Prometheus scrape endpoint
-health_addr      = ":9180"    # /health endpoint for liveness probes (set "" to disable)
-shutdown_timeout = "30s"      # max time to drain in-flight work on SIGINT/SIGTERM
+log_level              = "info"     # debug | info | warn | error
+metrics_addr           = ":9100"    # Prometheus scrape endpoint
+health_addr            = ":9180"    # /health (liveness) and /ready (readiness) endpoints; set "" to disable
+shutdown_timeout       = "30s"      # max time to drain in-flight work on SIGINT/SIGTERM
+readiness_head_timeout = "60s"      # indexer-only: /ready returns 503 if any chain head older than this; default 60s
 
 [kafka]
 brokers = ["localhost:9092"]
