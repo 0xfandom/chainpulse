@@ -34,6 +34,13 @@ type AppSection struct {
 	// so docker restarts the container on a healthy broker. Zero
 	// (unset) defaults to 5.
 	KafkaPublishFailThreshold int `toml:"kafka_publish_fail_threshold"`
+	// ChainDialStagger is the delay applied between successive chain
+	// listener startups in the indexer. A non-zero value spreads the
+	// initial WSS handshakes over N*stagger so free / public RPC
+	// providers do not see a same-millisecond burst from one IP and
+	// 429 every connection. Zero (default) preserves the legacy
+	// fire-them-all-at-once behaviour for bench / single-chain runs.
+	ChainDialStagger Duration `toml:"chain_dial_stagger"`
 }
 
 // KafkaConfig holds connection and topic settings for the Kafka pipeline.
