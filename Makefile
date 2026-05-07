@@ -1,4 +1,4 @@
-.PHONY: help build test lint fmt vet tidy run-indexer run-processor run-api run-mcp docker-up docker-down clean proto integration-test demo demo-down demo-logs
+.PHONY: help build test lint fmt vet tidy run-indexer run-processor run-api run-mcp docker-up docker-down clean proto integration-test demo demo-down demo-logs bench-mem bench-mem-lite
 
 GO ?= go
 BIN_DIR := bin
@@ -22,6 +22,8 @@ help:
 	@echo "  demo            bring up full stack and print copy-paste demo commands"
 	@echo "  demo-down       tear demo stack down"
 	@echo "  demo-logs       tail logs of the four ChainPulse binaries"
+	@echo "  bench-mem       sample container RSS for the default stack"
+	@echo "  bench-mem-lite  sample container RSS with the Redpanda lite overlay"
 	@echo "  clean           remove ./bin"
 
 build:
@@ -87,3 +89,9 @@ demo-down:
 
 demo-logs:
 	docker compose logs -f indexer processor api mcp
+
+bench-mem:
+	./scripts/bench-mem.sh
+
+bench-mem-lite:
+	LITE=1 ./scripts/bench-mem.sh

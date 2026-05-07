@@ -1,0 +1,36 @@
+# Lite-memory overlay. Apply on top of docker-compose.yml to swap the
+# Confluent Kafka JVM image for Redpanda — Kafka-protocol compatible,
+# single Go binary, ~50-80MB resident vs ~300-400MB for the JVM.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.lite.yml up -d
+#   make bench-mem   # samples RSS for every service
+#
+# All other services (clickhouse memory caps, redis maxmemory) inherit
+# from the base compose file unchanged.
+
+services:
+  kafka:
+    image: redpandadata/redpanda:v24.2.4
+    container_name: chainpulse-kafka
+    command:
+      - "redpanda"
+      - "start"
+      - "--node-id=0"
+      - "--check=false"
+      - "--smp=1"
+      - "--memory=256M"
+      - "--reserve-memory=0M"
+      - "--overprovisioned"
+      - "--kafka-addr=INSIDE://0.0.0.0:9092,OUTSIDE://0.0.0.0:29092"
+      - "--advertise-kafka-addr=INSIDE://kafka:9092,OUTSIDE://localhost:29092"
+      - "--rpc-addr=0.0.0.0:33145"
+      - "--advertise-rpc-addr=kafka:33145"
+    environment: {}
+    volumes:
+      - kafka_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health -X brokers=kafka:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
