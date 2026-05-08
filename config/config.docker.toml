@@ -59,15 +59,6 @@ cache_ttl    = "60s"
 bearer_token = "${MCP_BEARER_TOKEN}"  # set in .env (empty string allowed)
 
 [[chains]]
-chain_id      = 8453
-name          = "base"
-rpc_wss       = "${BASE_WSS_URL}"
-rpc_http      = "${BASE_HTTP_URL}"
-start_block   = 0
-confirmations = 1
-contracts     = []
-
-[[chains]]
 chain_id      = 1
 name          = "ethereum"
 rpc_wss       = "${ETH_WSS_URL}"
@@ -86,55 +77,10 @@ confirmations = 1
 contracts     = []
 
 [[chains]]
-chain_id      = 10
-name          = "optimism"
-rpc_wss       = "${OP_WSS_URL}"
-rpc_http      = "${OP_HTTP_URL}"
-start_block   = 0
-confirmations = 1
-contracts     = []
-
-[[chains]]
 chain_id      = 137
 name          = "polygon"
 rpc_wss       = "${POLY_WSS_URL}"
 rpc_http      = "${POLY_HTTP_URL}"
 start_block   = 0
 confirmations = 32
-contracts     = []
-
-[[chains]]
-chain_id      = 56
-name          = "bsc"
-rpc_wss       = "${BSC_WSS_URL}"
-rpc_http      = "${BSC_HTTP_URL}"
-start_block   = 0
-confirmations = 15
-contracts     = []
-
-[[chains]]
-chain_id      = 43114
-name          = "avalanche"
-rpc_wss       = "${AVAX_WSS_URL}"
-rpc_http      = "${AVAX_HTTP_URL}"
-start_block   = 0
-confirmations = 2
-contracts     = []
-
-[[chains]]
-chain_id      = 534352
-name          = "scroll"
-rpc_wss       = "${SCROLL_WSS_URL}"
-rpc_http      = "${SCROLL_HTTP_URL}"
-start_block   = 0
-confirmations = 2
-contracts     = []
-
-[[chains]]
-chain_id      = 324
-name          = "zksync"
-rpc_wss       = "${ZKSYNC_WSS_URL}"
-rpc_http      = "${ZKSYNC_HTTP_URL}"
-start_block   = 0
-confirmations = 2
 contracts     = []
