@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	tokenTransfersTTL = 60 * time.Second
-	tokenTransfersDef = 100
-	tokenTransfersMax = 500
+	tokenTransfersTTL time.Duration = 0 // bypass cache; latest-token-transfers must always be fresh
+	tokenTransfersDef               = 100
+	tokenTransfersMax               = 500
 )
 
 // TokenHandlers exposes the /token/* endpoints.

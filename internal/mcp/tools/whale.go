@@ -65,7 +65,7 @@ func whaleActivityHandler(deps *Deps) mcp.ToolHandler {
 		if limit > 500 {
 			limit = 500
 		}
-		return cached(ctx, deps, "get_whale_activity", argsAsMap(params), func() (whaleActivityResponse, error) {
+		return cachedWithTTL(ctx, deps, "get_whale_activity", argsAsMap(params), 0, func() (whaleActivityResponse, error) {
 			rows, err := deps.Store.WhaleTransfers(ctx, a.Hours, a.MinAmount, a.ChainID, limit)
 			if err != nil {
 				return whaleActivityResponse{}, err

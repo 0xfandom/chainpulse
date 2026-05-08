@@ -46,7 +46,24 @@ func cacheKey(tool string, args map[string]any) string {
 // under the derived key with the configured TTL. On cache failure (Redis
 // down) the loader still runs — caching is opportunistic.
 func cached[T any](ctx context.Context, deps *Deps, tool string, args map[string]any, loader func() (T, error)) (T, error) {
+	return cachedWithTTL(ctx, deps, tool, args, deps.TTL, loader)
+}
+
+// cachedWithTTL is the explicit-TTL variant of cached. Tools that need
+// per-call freshness (latest-block / whale activity / token transfers)
+// pass TTL = 0, which bypasses Redis read+write entirely so callers
+// always see ClickHouse-fresh data. Heavier aggregations (positions,
+// balances, history, protocol stats) keep the default TTL.
+func cachedWithTTL[T any](ctx context.Context, deps *Deps, tool string, args map[string]any, ttl time.Duration, loader func() (T, error)) (T, error) {
 	var zero T
+	if ttl <= 0 {
+		out, err := loader()
+		if err != nil {
+			return zero, err
+		}
+		monitor.IncAPICacheHit(monitor.APICacheSourceClickHouse)
+		return out, nil
+	}
 	key := cacheKey(tool, args)
 	if deps.Cache != nil {
 		raw, hit, err := deps.Cache.GetBytes(ctx, key)
@@ -65,7 +82,7 @@ func cached[T any](ctx context.Context, deps *Deps, tool string, args map[string
 	if deps.Cache != nil {
 		body, mErr := json.Marshal(out)
 		if mErr == nil {
-			_ = deps.Cache.SetBytes(ctx, key, body, deps.TTL)
+			_ = deps.Cache.SetBytes(ctx, key, body, ttl)
 		}
 	}
 	monitor.IncAPICacheHit(monitor.APICacheSourceClickHouse)
