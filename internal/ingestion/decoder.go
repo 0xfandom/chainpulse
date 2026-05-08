@@ -56,6 +56,17 @@ func init() {
 	}
 }
 
+// KnownTopics returns the topic0 hashes for every event signature the
+// indexer recognizes. Used by the listener's filter-logs subscription
+// path so the RPC provider only streams logs we can actually decode.
+func KnownTopics() []common.Hash {
+	out := make([]common.Hash, 0, len(knownSigs))
+	for h := range knownSigs {
+		out = append(out, h)
+	}
+	return out
+}
+
 // ErrUnrecognizedEvent is returned by Decode when no known signature
 // matches the log's first topic. Callers should skip the log.
 var ErrUnrecognizedEvent = errors.New("unrecognized event signature")
