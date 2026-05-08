@@ -41,7 +41,7 @@ func latestBlockHandler(deps *Deps) mcp.ToolHandler {
 		if err := decodeArgs(params, &a); err != nil {
 			return nil, err
 		}
-		return cached(ctx, deps, "get_latest_block", argsAsMap(params), func() (latestBlockResponse, error) {
+		return cachedWithTTL(ctx, deps, "get_latest_block", argsAsMap(params), 0, func() (latestBlockResponse, error) {
 			if a.ChainID != 0 {
 				row, err := deps.Store.LatestBlock(ctx, a.ChainID)
 				if err != nil {

@@ -234,12 +234,15 @@ func TestTokenTransfers_LimitClamped(t *testing.T) {
 	}
 }
 
-func TestTokenTransfers_CachesSecondCall(t *testing.T) {
+func TestTokenTransfers_BypassesCache(t *testing.T) {
+	// get_token_transfers is a "latest"-class tool: agents asking for
+	// the freshest transfers must hit ClickHouse every time, not stale
+	// Redis cache. Two calls in a row must produce two queries.
 	s, conn, _ := newServerWithTools(t)
 	args := map[string]any{"address": "0x1111111111111111111111111111111111111111"}
 	_ = decode(t, s.Handle(context.Background(), toolCall("get_token_transfers", args)))
 	_ = decode(t, s.Handle(context.Background(), toolCall("get_token_transfers", args)))
-	if conn.queries != 1 {
-		t.Errorf("expected cache hit on second call, queries=%d", conn.queries)
+	if conn.queries != 2 {
+		t.Errorf("expected cache bypass, got queries=%d", conn.queries)
 	}
 }

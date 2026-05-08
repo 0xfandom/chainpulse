@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	chainBlocksTTL = 10 * time.Second
+	chainBlocksTTL = 0 * time.Second // bypass cache; latest-block must always be fresh
 	chainBlocksDef = 50
 	chainBlocksMax = 200
 )

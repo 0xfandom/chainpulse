@@ -29,6 +29,14 @@ func AsideRaw(
 	ttl time.Duration,
 	fallback func(ctx context.Context) ([]byte, error),
 ) ([]byte, bool, error) {
+	if ttl <= 0 {
+		v, err := fallback(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		monitor.IncAPICacheHit(monitor.APICacheSourceClickHouse)
+		return v, false, nil
+	}
 	start := time.Now()
 	if v, ok := l1.Get(key); ok {
 		monitor.IncAPICacheHit(monitor.APICacheSourceL1)

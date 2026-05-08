@@ -58,7 +58,7 @@ func tokenTransfersHandler(deps *Deps) mcp.ToolHandler {
 		if limit > 500 {
 			limit = 500
 		}
-		return cached(ctx, deps, "get_token_transfers", argsAsMap(params), func() (tokenTransfersResponse, error) {
+		return cachedWithTTL(ctx, deps, "get_token_transfers", argsAsMap(params), 0, func() (tokenTransfersResponse, error) {
 			rows, err := deps.Store.TokenTransfersByAddress(ctx, a.Address, limit)
 			if err != nil {
 				return tokenTransfersResponse{}, err
