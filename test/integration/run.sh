@@ -37,7 +37,7 @@ until curl -sf http://localhost:8080/health >/dev/null 2>&1; do
 done
 
 echo "==> running integration test"
-KAFKA_BROKERS=localhost:9092 \
+KAFKA_BROKERS=localhost:29092 \
 KAFKA_TOPIC_RAW_EVENTS=raw_events \
 API_URL=http://localhost:8080 \
   go test -v -tags integration -timeout=180s ./test/integration/...
