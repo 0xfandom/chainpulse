@@ -30,13 +30,18 @@ check_port_free() {
   # correspond to one of our chainpulse-* services.
   if [[ "$owner_cmd" == *"com.docker"* ]]; then
     local hit
-    hit=$(docker ps --format '{{.Names}} {{.Ports}}' | grep "0.0.0.0:${port}->" || true)
-    if [[ "$hit" == chainpulse-* ]]; then
-      return 0
-    fi
+    hit=$(docker ps --format '{{.Names}} {{.Ports}}' | awk -v p="$port" '
+      $1 ~ /^chainpulse-/ {
+        for (i=2;i<=NF;i++) {
+          if (match($i, /0\.0\.0\.0:[0-9]+(-[0-9]+)?->/)) {
+            spec=substr($i, RSTART+8, RLENGTH-10); n=split(spec,a,"-")
+            if (n==1 && a[1]+0==p) { print $1; exit }
+            if (n==2 && p+0>=a[1]+0 && p+0<=a[2]+0) { print $1; exit }
+          }
+        }
+      }')
     if [[ -n "$hit" ]]; then
-      echo "ERROR: port $port ($label) held by foreign container: $hit"
-      return 1
+      return 0
     fi
   fi
   echo "ERROR: port $port ($label) held by pid $owner_pid ($owner_cmd). Stop it first."
@@ -52,7 +57,7 @@ check_port_free 8080 "api-rest"
 check_port_free 8081 "api-grpc"
 check_port_free 3011 "mcp"
 check_port_free 9090 "prometheus"
-check_port_free 3000 "grafana"
+check_port_free 3030 "grafana"
 
 echo "==> docker compose up -d --build"
 docker compose up -d --build
@@ -93,7 +98,7 @@ Services
   gRPC               localhost:8081
   MCP (SSE)          http://localhost:3011
   Prometheus         http://localhost:9090
-  Grafana            http://localhost:3000  (admin / admin)
+  Grafana            http://localhost:3030  (admin / admin)
 
 Live REST tail
   curl -s 'http://localhost:8080/v1/protocol/uniswap_v3/stats' | jq
