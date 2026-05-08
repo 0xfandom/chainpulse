@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/segmentio/kafka-go"
@@ -22,6 +23,15 @@ const (
 	defaultBatchSize    = 100
 	defaultBatchTimeout = 20 * time.Millisecond
 	defaultMaxAttempts  = 3
+
+	// writerRebuildThreshold is the consecutive WriteMessages failure
+	// count that triggers a writer reconstruction. segmentio/kafka-go
+	// caches broker connections and resolved DNS at the writer level;
+	// after a Kafka container recycle or a transient docker DNS
+	// NXDOMAIN at indexer startup the cached state stays poisoned for
+	// the lifetime of the process. Closing and rebuilding the writer
+	// forces a fresh dial.
+	writerRebuildThreshold = 3
 )
 
 // messageWriter is the subset of *kafka.Writer the Producer uses. The
@@ -36,9 +46,17 @@ type messageWriter interface {
 // ChainEvents and partitions by chain_id so per-chain ordering is preserved
 // across consumer instances.
 type Producer struct {
+	mu         sync.Mutex
 	writer     messageWriter
 	topic      string
 	chainNames map[uint64]string
+
+	// rebuild reconstructs the underlying writer when a consecutive
+	// publish-failure streak reaches writerRebuildThreshold. nil for
+	// test producers built via newProducerWithWriter (no rebuild path,
+	// the streak counter still increments but never recreates).
+	rebuild    func() (messageWriter, error)
+	failStreak int
 }
 
 // ProducerConfig is the input to NewProducer.
@@ -76,25 +94,33 @@ func NewProducer(cfg ProducerConfig) (*Producer, error) {
 		maxAttempts = defaultMaxAttempts
 	}
 
-	w := &kafka.Writer{
-		Addr:                   kafka.TCP(cfg.Brokers...),
-		Topic:                  cfg.Topic,
-		Balancer:               &kafka.Hash{},
-		RequiredAcks:           acks,
-		AllowAutoTopicCreation: true,
-		Async:                  false,
-		BatchSize:              defaultBatchSize,
-		BatchTimeout:           defaultBatchTimeout,
-		MaxAttempts:            maxAttempts,
+	build := func() (messageWriter, error) {
+		w := &kafka.Writer{
+			Addr:                   kafka.TCP(cfg.Brokers...),
+			Topic:                  cfg.Topic,
+			Balancer:               &kafka.Hash{},
+			RequiredAcks:           acks,
+			AllowAutoTopicCreation: true,
+			Async:                  false,
+			BatchSize:              defaultBatchSize,
+			BatchTimeout:           defaultBatchTimeout,
+			MaxAttempts:            maxAttempts,
+		}
+		if cfg.ClientID != "" {
+			w.Transport = &kafka.Transport{ClientID: cfg.ClientID}
+		}
+		return w, nil
 	}
-	if cfg.ClientID != "" {
-		w.Transport = &kafka.Transport{ClientID: cfg.ClientID}
+	w, err := build()
+	if err != nil {
+		return nil, err
 	}
 
 	return &Producer{
 		writer:     w,
 		topic:      cfg.Topic,
 		chainNames: cfg.ChainNames,
+		rebuild:    build,
 	}, nil
 }
 
@@ -152,9 +178,14 @@ func (p *Producer) PublishBatch(ctx context.Context, events []*types.ChainEvent)
 
 	chainLabel := p.chainLabel(chainID)
 	start := time.Now()
-	if err := p.writer.WriteMessages(ctx, msgs...); err != nil {
+	p.mu.Lock()
+	w := p.writer
+	p.mu.Unlock()
+	if err := w.WriteMessages(ctx, msgs...); err != nil {
+		p.recordWriteFailure()
 		return fmt.Errorf("kafka write batch (%d msgs): %w", len(msgs), err)
 	}
+	p.recordWriteSuccess()
 	monitor.ObserveKafkaPublish(chainLabel, time.Since(start))
 
 	for _, ev := range events {
@@ -163,12 +194,72 @@ func (p *Producer) PublishBatch(ctx context.Context, events []*types.ChainEvent)
 	return nil
 }
 
+// recordWriteSuccess resets the consecutive-failure streak after any
+// successful WriteMessages. Cheap: lock-acquire + zero-store on the
+// hot path, contention only with rebuild attempts (very rare).
+func (p *Producer) recordWriteSuccess() {
+	p.mu.Lock()
+	p.failStreak = 0
+	p.mu.Unlock()
+}
+
+// recordWriteFailure increments the consecutive-failure streak. Once
+// the streak hits writerRebuildThreshold the underlying writer is
+// closed and reconstructed so DNS resolves fresh and broker
+// connections are re-dialed. The streak is reset whether the rebuild
+// succeeds or not — a failed rebuild attempt should not pin the
+// writer in a permanent rebuild loop on every subsequent batch; the
+// next publish failure restarts the count.
+//
+// Tests using newProducerWithWriter pass nil rebuild and only the
+// streak counter increments.
+func (p *Producer) recordWriteFailure() {
+	p.mu.Lock()
+	p.failStreak++
+	streak := p.failStreak
+	rebuild := p.rebuild
+	p.mu.Unlock()
+
+	if rebuild == nil || streak < writerRebuildThreshold {
+		return
+	}
+
+	l := log.Component("kafka_producer")
+	l.Warn().Int("streak", streak).Msg("kafka writer publish streak exceeded; rebuilding writer")
+
+	w, err := rebuild()
+	if err != nil {
+		l.Error().Err(err).Msg("kafka writer rebuild failed")
+		p.mu.Lock()
+		p.failStreak = 0
+		p.mu.Unlock()
+		return
+	}
+
+	p.mu.Lock()
+	old := p.writer
+	p.writer = w
+	p.failStreak = 0
+	p.mu.Unlock()
+
+	if old != nil {
+		_ = old.Close()
+	}
+}
+
 // Close flushes pending writes and closes the underlying Kafka writer.
 func (p *Producer) Close() error {
-	if p == nil || p.writer == nil {
+	if p == nil {
 		return nil
 	}
-	if err := p.writer.Close(); err != nil {
+	p.mu.Lock()
+	w := p.writer
+	p.writer = nil
+	p.mu.Unlock()
+	if w == nil {
+		return nil
+	}
+	if err := w.Close(); err != nil {
 		l := log.Component("kafka_producer")
 		l.Error().Err(err).Msg("close failed")
 		return err
