@@ -5,12 +5,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/segmentio/kafka-go"
 
 	chainpulselog "github.com/0xfandom/chainpulse/internal/log"
 	"github.com/0xfandom/chainpulse/internal/monitor"
 	"github.com/0xfandom/chainpulse/internal/types"
+)
+
+// Decoded-events writer is configured for async batched publish so
+// the consumer goroutine is not blocked on a per-event Kafka
+// roundtrip. ERC-20 Transfer alone produces hundreds of events per
+// second on Polygon-class chains; a single-goroutine consumer that
+// waited for each ack ceilinged throughput at ~100 events/sec and
+// kafka_lag climbed unbounded. Errors surface via the Completion
+// callback set when the writer is constructed.
+const (
+	decodedBatchSize    = 200
+	decodedBatchTimeout = 200 * time.Millisecond
 )
 
 // Producer wraps two kafka-go writers — one for decoded_events, one for
@@ -65,8 +78,33 @@ func NewProcessorProducer(cfg ProducerConfig) (*Producer, error) {
 		return w
 	}
 
+	// decoded_events is the high-volume republish path. Configure the
+	// writer for async batched publish so PublishDecoded never blocks
+	// the consumer goroutine on a per-event Kafka roundtrip. Errors
+	// surface via the Completion callback (one log + one metric bump
+	// per failed batch) — at-least-once is preserved for the
+	// authoritative copy in raw_events; decoded_events is best-effort.
+	decoded := &kafka.Writer{
+		Addr:                   kafka.TCP(cfg.Brokers...),
+		Topic:                  cfg.TopicDecodedEvents,
+		Balancer:               &kafka.Hash{},
+		RequiredAcks:           kafka.RequireAll,
+		AllowAutoTopicCreation: true,
+		Async:                  true,
+		BatchSize:              decodedBatchSize,
+		BatchTimeout:           decodedBatchTimeout,
+		Transport:              transport,
+	}
+	decoded.Completion = func(messages []kafka.Message, err error) {
+		if err != nil {
+			monitor.IncProcessorError(monitor.ProcErrKafkaPublish)
+			l := chainpulselog.Component("processor_producer")
+			l.Error().Err(err).Int("batch", len(messages)).Str("topic", cfg.TopicDecodedEvents).Msg("async decoded publish failed")
+		}
+	}
+
 	return &Producer{
-		decoded:        mk(cfg.TopicDecodedEvents),
+		decoded:        decoded,
 		positions:      mk(cfg.TopicPositionsUpdate),
 		decodedTopic:   cfg.TopicDecodedEvents,
 		positionsTopic: cfg.TopicPositionsUpdate,
@@ -74,8 +112,16 @@ func NewProcessorProducer(cfg ProducerConfig) (*Producer, error) {
 	}, nil
 }
 
-// PublishDecoded marshals event to JSON and writes it to decoded_events,
-// keyed by chain_id. Increments decoded_events_produced_total.
+// PublishDecoded marshals event to JSON and enqueues it for the
+// decoded_events writer, keyed by chain_id. Returns immediately —
+// the underlying writer is configured Async, so the actual broker
+// roundtrip happens in background and any failure surfaces via the
+// Completion callback set in NewProcessorProducer.
+//
+// The decoded_events_produced_total metric is incremented on enqueue
+// rather than on broker ack; in the failure case the
+// processor_errors_total{kafka_publish} counter (bumped from the
+// Completion callback) gives the offsetting signal.
 func (p *Producer) PublishDecoded(ctx context.Context, event *types.DecodedEvent) error {
 	if event == nil {
 		return fmt.Errorf("publish decoded: nil event")
