@@ -85,14 +85,15 @@ Before cloning, install:
 
 1. **Docker Desktop** (Mac/Windows) or Docker Engine + Compose v2 (Linux). Verify with `docker --version` and `docker compose version`. Compose v2 is required.
 2. **Git**. Verify with `git --version`.
-3. **An RPC URL for at least one chain.** ChainPulse needs a WebSocket endpoint to subscribe to new blocks. Free options:
-   - Alchemy (sign up, free tier covers Ethereum / Base / Arbitrum / Optimism / Polygon).
-   - Infura (similar coverage).
-   - QuickNode (similar).
-   - Public nodes such as `wss://ethereum-rpc.publicnode.com`. These work but rate-limit aggressively and may drop subscriptions.
+3. **An RPC URL for at least one chain.** ChainPulse needs a WebSocket endpoint that supports `eth_subscribe('logs', ...)`. Free options that work today:
+   - Alchemy (sign up, free tier covers Ethereum / Arbitrum / Polygon and more).
+   - BlockPi (per-chain free key; works for Ethereum / Arbitrum / Polygon).
+   - drpc.org (public, no key required; works for most chains).
+   - publicnode.com (public, no key required; reliable for Arbitrum / Polygon, sparse for Ethereum).
+   - Infura, QuickNode, Chainstack on a paid tier if you need higher rate limits.
    - A self-hosted node such as Geth, Reth, or Erigon if you have the disk space.
 
-   You can start with just one chain (Base is cheapest). Add more later.
+   You can start with just one chain (Polygon is the highest-volume; Arbitrum is the lightest). Add more later.
 4. **About 4 GB of free RAM** for the full stack on first boot. ClickHouse and Kafka are the heavy services.
 5. **A few GB of free disk** for the ClickHouse data volume as you index more blocks.
 
@@ -120,13 +121,13 @@ cp .env.example .env
 Open `.env` in your editor. You will see a block per chain, like:
 
 ```
-BASE_WSS_URL=wss://base-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY
-BASE_HTTP_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY
+ETH_WSS_URL=wss://ethereum-rpc.publicnode.com
+ETH_HTTP_URL=https://ethereum-rpc.publicnode.com
 ```
 
-Replace `YOUR_ALCHEMY_KEY` (or the whole URL) with the RPC URL you obtained in the previous section. **You only need to fill in the chains you actually want to index.** Every other chain will start, fail to connect, and back off with no data; harmless but noisy in logs.
+Replace each URL with the RPC endpoint you obtained in the previous section. **You only need to fill in the chains you actually want to index.** Every other chain will start, fail to connect, and back off with no data; harmless but noisy in logs.
 
-If you only have one provider key (say, only for Base), you can:
+If you only have one provider key (say, only for Polygon), you can:
 
 - Leave the other chains' env vars unset, and **comment out the matching `[[chains]]` blocks in `config/config.toml`** so the indexer does not even try to start them.
 
@@ -142,16 +143,22 @@ Find the `[[chains]]` blocks near the bottom. Each one looks like:
 
 ```toml
 [[chains]]
-chain_id      = 8453
-name          = "base"
-rpc_wss       = "${BASE_WSS_URL}"
-rpc_http      = "${BASE_HTTP_URL}"
-start_block   = 0
-confirmations = 1
-contracts     = []
+chain_id       = 1
+name           = "ethereum"
+rpc_wss        = "${ETH_WSS_URL}"
+rpc_http       = "${ETH_HTTP_URL}"
+start_block    = 0
+confirmations  = 4
+contracts      = []
+subscribe_mode = "logs"   # "logs" (default) or "blocks"
 ```
 
-Comment out (prefix lines with `#`) any chain you do not have RPC URLs for. `start_block = 0` means "start from the latest head" so you do not backfill history. `confirmations` is a reorg-safety lag; increase it for chains with known reorg patterns (BSC = 15 is a sane default).
+Comment out (prefix lines with `#`) any chain you do not have RPC URLs for. `start_block = 0` means "start from the latest head" so you do not backfill history. `confirmations` is a reorg-safety lag; increase it for chains with known reorg patterns (BSC = 15 is a sane default; only honored when `subscribe_mode = "blocks"`).
+
+`subscribe_mode` selects how the indexer listens:
+
+- `"logs"` *(default)*: a single topic-filtered `eth_subscribe('logs', ...)` per chain. The provider only streams events the decoder can actually handle, which is what makes free-tier WSS endpoints viable. `confirmations` is ignored (effectively 1).
+- `"blocks"`: legacy `newHeads` + `eth_getLogs` per block. Honors `confirmations` for reorg safety. Requires a paid RPC tier on busy chains.
 
 ### 4. Boot the stack
 
@@ -187,7 +194,7 @@ If those work, the pipeline is alive: blocks are flowing from RPC to indexer to 
 
 ### 6. Open the dashboards (optional)
 
-- Grafana: http://localhost:3000 (login `admin` / `admin`, then change the password). The "ChainPulse" dashboard is preloaded.
+- Grafana: http://localhost:3030 (login `admin` / `admin`, then change the password). The "ChainPulse" dashboard is preloaded.
 - Prometheus: http://localhost:9090 (raw metrics, useful for ad-hoc queries).
 
 ### 7. Stop and clean up
@@ -206,7 +213,7 @@ This is the most important thing for a new user to understand.
 **ChainPulse does not provide chain data.** It indexes whatever an EVM RPC endpoint sends it. The endpoints are entirely under your control:
 
 - The RPC URL in your `.env` decides which chain you see and which provider you depend on.
-- If your URL points at Base mainnet, you get Base mainnet data. If it points at Sepolia, you get Sepolia data.
+- If your URL points at Ethereum mainnet, you get Ethereum mainnet data. If it points at Sepolia, you get Sepolia data.
 - If your provider rate-limits, the indexer logs `Request timeout on the free tier` or similar and backs off. The data simply stops flowing for that chain until you upgrade or switch providers.
 - If you point at a self-hosted Geth, all data is served from your own infrastructure with no third-party visibility.
 
@@ -277,7 +284,7 @@ Quit fully (Cmd+Q on Mac) and reopen. The 7 ChainPulse tools should appear in th
 
 Ask Claude something like:
 
-> "Using ChainPulse, what are the recent USDC transfers on Base for `0x...`?"
+> "Using ChainPulse, what are the recent USDC transfers on Polygon for `0x...`?"
 
 Claude will pick the `get_token_transfers` or `get_wallet_history` tool, call it, and answer with live data from your indexer.
 
@@ -426,12 +433,13 @@ Every binary reads the same TOML file. `${VAR}` placeholders are substituted fro
 | `[mcp]` | `transport` | `sse` | `stdio` \| `sse` |
 | `[mcp]` | `cache_ttl` | `60s` | Tool-result Redis TTL |
 | `[mcp]` | `bearer_token` | `""` | If set, `/sse` and `/messages` require `Authorization: Bearer <token>` |
-| `[[chains]]` | `chain_id` | required | Numeric chain id (e.g. 8453) |
+| `[[chains]]` | `chain_id` | required | Numeric chain id (e.g. 1, 137, 42161) |
 | `[[chains]]` | `name` | required | Lowercase identifier |
 | `[[chains]]` | `rpc_wss` | required | WebSocket RPC URL |
 | `[[chains]]` | `rpc_http` | required | HTTP RPC URL (fallback / log filter) |
-| `[[chains]]` | `confirmations` | `0` | Blocks to wait before processing (reorg safety) |
-| `[[chains]]` | `head_timeout` | `90s` | Force WSS reconnect if no header arrives in this window |
+| `[[chains]]` | `confirmations` | `0` | Blocks to wait before processing (reorg safety, only honored when `subscribe_mode = "blocks"`) |
+| `[[chains]]` | `head_timeout` | `90s` | Force WSS reconnect if no log activity arrives in this window |
+| `[[chains]]` | `subscribe_mode` | `"logs"` | `"logs"` = topic-filtered `eth_subscribe('logs', ...)` (free-tier friendly, ignores `confirmations`); `"blocks"` = legacy `newHeads` + `eth_getLogs` per block (heavy on RPC, honors `confirmations`) |
 
 Full template at `config/config.example.toml`.
 
@@ -464,13 +472,13 @@ A 6-panel Grafana dashboard ships pre-provisioned at `monitoring/dashboards/chai
 ## Troubleshooting
 
 **`docker compose up` fails with port already in use.**
-Some other process is using one of `8080`, `8081`, `8123`, `9000`, `9092`, `3000`, `3001`, `6379`, or `9090`. Stop the other process, or remap the port in `docker-compose.yml`.
+Some other process is using one of `8080`, `8081`, `8123`, `9000`, `9092`, `29092`, `3030`, `3011`, `6379`, or `9090`. Stop the other process, or remap the port in `docker-compose.yml`.
 
 **Indexer logs `connection refused` against `kafka:9092` for the first 30 seconds.**
 Expected on cold start. The kafka healthcheck has a `start_period` to absorb this; if errors persist past 1 minute, run `docker compose logs kafka` to see why the broker did not come up.
 
 **`/ready` returns 503 forever.**
-At least one chain has not produced a head. Check `docker compose logs indexer | grep -i error` for RPC issues (rate limit, bad URL, expired key). Verify the URL works: `wscat -c "$BASE_WSS_URL"`.
+At least one chain has not produced a head. Check `docker compose logs indexer | grep -i error` for RPC issues (rate limit, bad URL, expired key). Verify the URL works: `wscat -c "$ETH_WSS_URL"`.
 
 **MCP tools do not appear in Claude Desktop.**
 Quit Claude fully (Cmd+Q on Mac) and reopen. Check `~/Library/Logs/Claude/mcp-server-chainpulse.log` for stderr from the binary. Common causes: wrong path in `command`, missing `config.toml`, ClickHouse not reachable from the host.
