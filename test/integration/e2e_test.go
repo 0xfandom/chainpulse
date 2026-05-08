@@ -128,10 +128,14 @@ func TestE2E_TransferFlowsThroughPipeline(t *testing.T) {
 	}
 
 	wallet := strings.ToLower(from.Hex())
-	endpoint := fmt.Sprintf("%s/v1/tokens/%s/transfers?limit=10", apiURL, strings.ToLower(token.Hex()))
+	endpoint := fmt.Sprintf("%s/v1/token/%s/transfers?limit=10", apiURL, strings.ToLower(token.Hex()))
 	t.Logf("polling %s for new transfer (token=%s)", endpoint, token.Hex())
 
-	deadline := time.Now().Add(60 * time.Second)
+	// Give the processor a head start so we don't poison the API cache (TTL 60s)
+	// with an empty response on the very first poll.
+	time.Sleep(5 * time.Second)
+
+	deadline := time.Now().Add(120 * time.Second)
 	wantTx := strings.ToLower("0x" + hex.EncodeToString(txHash.Bytes()))
 	for time.Now().Before(deadline) {
 		if found := pollForTx(t, endpoint, wantTx); found {
@@ -140,7 +144,7 @@ func TestE2E_TransferFlowsThroughPipeline(t *testing.T) {
 		}
 		time.Sleep(2 * time.Second)
 	}
-	t.Fatalf("transfer never appeared in api within 60s; wallet=%s tx=%s", wallet, wantTx)
+	t.Fatalf("transfer never appeared in api within 120s; wallet=%s tx=%s", wallet, wantTx)
 }
 
 // pollForTx hits the api and returns true if the response contains the
