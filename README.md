@@ -2,7 +2,7 @@
 
 Self-hosted, multi-chain blockchain event indexer with REST, gRPC, WebSocket, and MCP query surfaces.
 
-ChainPulse subscribes to live blocks on EVM chains (Ethereum, Base, Arbitrum, Optimism, Polygon, BSC, Avalanche, Scroll, zkSync), decodes the events you care about (ERC-20 transfers, Uniswap V3 swaps, Aave V3 supply/borrow, Compound V3 actions), stores them in a fast analytical database, and exposes that data to dashboards, backend services, and AI agents.
+ChainPulse subscribes to live blocks on EVM chains (Ethereum, Arbitrum, Polygon by default — `config/config.toml` to add more), decodes the events you care about (ERC-20 transfers, Uniswap V3 swaps, Aave V3 supply/borrow, Compound V3 actions, Lido stETH, Curve), stores them in a fast analytical database, and exposes that data to dashboards, backend services, and AI agents.
 
 Everything runs on your own machine via Docker Compose. No data leaves your laptop. The chain data you see depends entirely on the RPC URLs you point ChainPulse at.
 
@@ -364,10 +364,10 @@ Each connection joins an ephemeral Kafka consumer group at `LastOffset`, so it o
 Four independent binaries connected by Kafka topics:
 
 ```
-EVM RPC (eth/base/arb/op/poly/bsc/avax/scroll/zksync)
+EVM RPC (eth/arb/poly by default; add chains in config.toml)
         |
         v
-  cmd/indexer  -- subscribes to newHeads, decodes logs, writes raw_events
+  cmd/indexer  -- topic-filtered eth_subscribe('logs', ...), decodes, writes raw_events
         |
         v
   Kafka  raw_events
