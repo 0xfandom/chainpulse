@@ -225,9 +225,9 @@ func TestRun_ConfirmationsLag(t *testing.T) {
 // This guards against silent WSS death where sub.Err() never fires.
 func TestRun_HeadWatchdogFires(t *testing.T) {
 	cfg := types.ChainConfig{
-		ChainID:     8453,
-		Name:        "base",
-		RPCWSS:      "wss://example/ws",
+		ChainID:       8453,
+		Name:          "base",
+		RPCWSS:        "wss://example/ws",
 		HeadTimeout:   types.Duration(80 * time.Millisecond),
 		SubscribeMode: "blocks",
 	}
@@ -281,9 +281,9 @@ func TestRun_HeadWatchdogFires(t *testing.T) {
 // cancels.
 func TestRun_HeadWatchdogResetsOnHeader(t *testing.T) {
 	cfg := types.ChainConfig{
-		ChainID:     8453,
-		Name:        "base",
-		RPCWSS:      "wss://example/ws",
+		ChainID:       8453,
+		Name:          "base",
+		RPCWSS:        "wss://example/ws",
 		HeadTimeout:   types.Duration(100 * time.Millisecond),
 		SubscribeMode: "blocks",
 	}
