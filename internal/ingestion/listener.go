@@ -76,6 +76,7 @@ type Dialer func(ctx context.Context, url string) (EthClient, error)
 // as an interface for test substitution.
 type EthClient interface {
 	SubscribeNewHead(ctx context.Context, ch chan<- *ethtypes.Header) (ethereum.Subscription, error)
+	SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, ch chan<- ethtypes.Log) (ethereum.Subscription, error)
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]ethtypes.Log, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*ethtypes.Header, error)
 	Close()
@@ -134,7 +135,13 @@ func (cl *ChainListener) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		err := cl.runOnce(ctx)
+		var err error
+		switch cl.cfg.SubscribeMode {
+		case "blocks":
+			err = cl.runOnce(ctx)
+		default:
+			err = cl.runOnceLogs(ctx)
+		}
 		if err == nil || ctx.Err() != nil {
 			return nil
 		}
@@ -348,6 +355,159 @@ func (cl *ChainListener) processBlock(ctx context.Context, client EthClient, hea
 	monitor.RecordHead(cl.cfg.Name)
 	monitor.ObserveBlockProcessing(cl.cfg.Name, time.Since(start))
 	return nil
+}
+
+// runOnceLogs executes a single dial + filter-logs subscription session.
+// Replaces the per-block eth_getLogs polling path with a server-side
+// topic-filtered log stream. The provider only sends logs whose topic0
+// matches a known event signature, so free-tier WSS endpoints can
+// sustain the stream.
+//
+// Only one subscription is opened per WSS connection: many free-tier
+// providers (publicnode, drpc) limit each socket to a single
+// long-running subscription, so adding a parallel newHeads sub silently
+// stalls one of them. Block timestamps therefore default to time.Now()
+// — close enough for streaming, and avoids a second dial.
+//
+// Confirmations is intentionally ignored in this mode: the filter-logs
+// subscription emits logs as the provider sees them, with no built-in
+// reorg buffer. Callers needing reorg safety should set
+// SubscribeMode = "blocks".
+func (cl *ChainListener) runOnceLogs(ctx context.Context) error {
+	client, err := cl.dialer(ctx, cl.cfg.RPCWSS)
+	if err != nil {
+		return fmt.Errorf("dial %s: %w", cl.cfg.Name, err)
+	}
+	defer client.Close()
+
+	cl.log.Info().Msg("connected to WebSocket")
+	monitor.SetListenerConnected(cl.cfg.Name, true)
+
+	q := ethereum.FilterQuery{Topics: [][]common.Hash{KnownTopics()}}
+	if addrs := parseContracts(cl.cfg.Contracts); len(addrs) > 0 {
+		q.Addresses = addrs
+	}
+	rawLogs := make(chan ethtypes.Log, 256)
+	logSub, err := client.SubscribeFilterLogs(ctx, q, rawLogs)
+	if err != nil {
+		return fmt.Errorf("subscribe logs %s: %w", cl.cfg.Name, err)
+	}
+	defer logSub.Unsubscribe()
+
+	// Drain the rpc-subscription channel into a much larger internal
+	// buffer so the upstream rpc queue never backs up while we publish.
+	// Polygon-class chains burst hundreds of logs per block; the rpc
+	// layer overflows ("subscription queue overflow") if the consumer
+	// stalls on a slow Kafka write.
+	logs := make(chan ethtypes.Log, 8192)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case l, ok := <-rawLogs:
+				if !ok {
+					return
+				}
+				select {
+				case logs <- l:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	headTimeout := cl.cfg.HeadTimeout.AsDuration()
+	if headTimeout <= 0 {
+		headTimeout = defaultHeadTimeout
+	}
+	watchdog := time.NewTimer(headTimeout)
+	defer watchdog.Stop()
+
+	const (
+		batchMaxSize = 200
+		batchMaxWait = 200 * time.Millisecond
+	)
+	batch := make([]*types.ChainEvent, 0, batchMaxSize)
+	flushTimer := time.NewTimer(batchMaxWait)
+	defer flushTimer.Stop()
+	if !flushTimer.Stop() {
+		select {
+		case <-flushTimer.C:
+		default:
+		}
+	}
+
+	var lastBlock uint64
+
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		start := time.Now()
+		err := cl.producer.PublishBatch(ctx, batch)
+		monitor.ObserveBlockProcessing(cl.cfg.Name, time.Since(start))
+		if err != nil {
+			cl.log.Error().Err(err).Int("events", len(batch)).Msg("kafka publish batch failed")
+			batch = batch[:0]
+			return cl.recordPublishFailure(err)
+		}
+		cl.kafkaFailStreak = 0
+		batch = batch[:0]
+		return nil
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-logSub.Err():
+			if err == nil {
+				return errors.New("log subscription closed")
+			}
+			return fmt.Errorf("log subscription error: %w", err)
+		case <-watchdog.C:
+			cl.log.Warn().Dur("timeout", headTimeout).Msg("no logs received within watchdog window; reconnecting")
+			return fmt.Errorf("%w after %s", errHeadTimeout, headTimeout)
+		case <-flushTimer.C:
+			if err := flush(); err != nil {
+				return err
+			}
+		case vLog := <-logs:
+			if !watchdog.Stop() {
+				select {
+				case <-watchdog.C:
+				default:
+				}
+			}
+			watchdog.Reset(headTimeout)
+			if vLog.BlockNumber > lastBlock {
+				lastBlock = vLog.BlockNumber
+				monitor.RecordHead(cl.cfg.Name)
+			}
+			cl.log.Debug().Uint64("block", vLog.BlockNumber).Str("topic0", vLog.Topics[0].Hex()).Msg("log received")
+			event, decErr := cl.decoder.Decode(cl.cfg.ChainID, vLog, uint64(time.Now().Unix()))
+			if decErr != nil {
+				continue
+			}
+			batch = append(batch, event)
+			if len(batch) == 1 {
+				flushTimer.Reset(batchMaxWait)
+			}
+			if len(batch) >= batchMaxSize {
+				if !flushTimer.Stop() {
+					select {
+					case <-flushTimer.C:
+					default:
+					}
+				}
+				if err := flush(); err != nil {
+					return err
+				}
+			}
+		}
+	}
 }
 
 // parseContracts converts string contract addresses from config into

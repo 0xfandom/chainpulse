@@ -67,6 +67,14 @@ type ChainConfig struct {
 	// subscription channel, so the listener needs a watchdog to make
 	// progress detectable. Zero (unset) defaults to 90s.
 	HeadTimeout Duration `toml:"head_timeout"`
+	// SubscribeMode selects the ingestion path:
+	//   "logs"   — eth_subscribe('logs', {topics:[knownSigs]}) streams only
+	//              recognized events. Cheap on free-tier WSS; ignores
+	//              Confirmations (effectively 1).
+	//   "blocks" — eth_subscribe('newHeads') + eth_getLogs per block.
+	//              Honors Confirmations for reorg safety. Heavy on RPC.
+	// Empty defaults to "logs".
+	SubscribeMode string `toml:"subscribe_mode"`
 }
 
 // ClickHouseConfig holds the analytical-store connection + batching policy.

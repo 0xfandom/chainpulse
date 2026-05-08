@@ -27,7 +27,9 @@ func (f *fakeSubscription) Unsubscribe()      {}
 // fakeClient implements EthClient.
 type fakeClient struct {
 	headers     chan *ethtypes.Header
+	logs        chan ethtypes.Log
 	subErr      chan error
+	logSubErr   chan error
 	subscribeFn func(ctx context.Context, ch chan<- *ethtypes.Header) (ethereum.Subscription, error)
 	filterFn    func(ctx context.Context, q ethereum.FilterQuery) ([]ethtypes.Log, error)
 	headerFn    func(ctx context.Context, n *big.Int) (*ethtypes.Header, error)
@@ -50,6 +52,25 @@ func (f *fakeClient) SubscribeNewHead(ctx context.Context, ch chan<- *ethtypes.H
 	return &fakeSubscription{errCh: f.subErr}, nil
 }
 
+func (f *fakeClient) SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, ch chan<- ethtypes.Log) (ethereum.Subscription, error) {
+	if f.logs != nil {
+		go func() {
+			for l := range f.logs {
+				select {
+				case ch <- l:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+	errCh := f.logSubErr
+	if errCh == nil {
+		errCh = make(chan error, 1)
+	}
+	return &fakeSubscription{errCh: errCh}, nil
+}
+
 func (f *fakeClient) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]ethtypes.Log, error) {
 	if f.filterFn != nil {
 		return f.filterFn(ctx, q)
@@ -67,7 +88,7 @@ func (f *fakeClient) HeaderByNumber(ctx context.Context, n *big.Int) (*ethtypes.
 func (f *fakeClient) Close() { f.closed = true }
 
 func TestRun_DialFailureReconnects(t *testing.T) {
-	cfg := types.ChainConfig{ChainID: 8453, Name: "base", RPCWSS: "wss://example/ws"}
+	cfg := types.ChainConfig{ChainID: 8453, Name: "base", RPCWSS: "wss://example/ws", SubscribeMode: "blocks"}
 	cl := NewChainListener(cfg, NewABIDecoder(), &Producer{chainNames: map[uint64]string{8453: "base"}})
 
 	dialCalls := 0
@@ -87,7 +108,7 @@ func TestRun_DialFailureReconnects(t *testing.T) {
 }
 
 func TestRun_ProcessesBlocksThenContextCancel(t *testing.T) {
-	cfg := types.ChainConfig{ChainID: 8453, Name: "base", RPCWSS: "wss://example/ws"}
+	cfg := types.ChainConfig{ChainID: 8453, Name: "base", RPCWSS: "wss://example/ws", SubscribeMode: "blocks"}
 	dec := NewABIDecoder()
 
 	// Producer with no real broker; we won't call Publish because the test
@@ -145,7 +166,7 @@ func TestRun_ProcessesBlocksThenContextCancel(t *testing.T) {
 // block 100 triggers a FilterLogs scoped to block 98 (the safe head),
 // not 100. Demonstrates the reorg-safety lag.
 func TestRun_ConfirmationsLag(t *testing.T) {
-	cfg := types.ChainConfig{ChainID: 8453, Name: "base", RPCWSS: "wss://example/ws", Confirmations: 2}
+	cfg := types.ChainConfig{ChainID: 8453, Name: "base", RPCWSS: "wss://example/ws", Confirmations: 2, SubscribeMode: "blocks"}
 	dec := NewABIDecoder()
 
 	prod, err := NewProducer(ProducerConfig{Brokers: []string{"localhost:9092"}, Topic: "raw_events"})
@@ -204,10 +225,11 @@ func TestRun_ConfirmationsLag(t *testing.T) {
 // This guards against silent WSS death where sub.Err() never fires.
 func TestRun_HeadWatchdogFires(t *testing.T) {
 	cfg := types.ChainConfig{
-		ChainID:     8453,
-		Name:        "base",
-		RPCWSS:      "wss://example/ws",
-		HeadTimeout: types.Duration(80 * time.Millisecond),
+		ChainID:       8453,
+		Name:          "base",
+		RPCWSS:        "wss://example/ws",
+		HeadTimeout:   types.Duration(80 * time.Millisecond),
+		SubscribeMode: "blocks",
 	}
 	dec := NewABIDecoder()
 
@@ -259,10 +281,11 @@ func TestRun_HeadWatchdogFires(t *testing.T) {
 // cancels.
 func TestRun_HeadWatchdogResetsOnHeader(t *testing.T) {
 	cfg := types.ChainConfig{
-		ChainID:     8453,
-		Name:        "base",
-		RPCWSS:      "wss://example/ws",
-		HeadTimeout: types.Duration(100 * time.Millisecond),
+		ChainID:       8453,
+		Name:          "base",
+		RPCWSS:        "wss://example/ws",
+		HeadTimeout:   types.Duration(100 * time.Millisecond),
+		SubscribeMode: "blocks",
 	}
 	dec := NewABIDecoder()
 
@@ -354,9 +377,10 @@ func (w *flakyWriter) Close() error { return nil }
 // or reconnecting WSS forever.
 func TestRun_KafkaPublishFailFastTriggersErrKafkaUnhealthy(t *testing.T) {
 	cfg := types.ChainConfig{
-		ChainID: 8453,
-		Name:    "base",
-		RPCWSS:  "wss://example/ws",
+		ChainID:       8453,
+		Name:          "base",
+		RPCWSS:        "wss://example/ws",
+		SubscribeMode: "blocks",
 		// Confirmations 0 so each head emits immediately; keeps the
 		// per-head -> per-publish mapping easy to reason about.
 	}
@@ -410,9 +434,10 @@ func TestRun_KafkaPublishFailFastTriggersErrKafkaUnhealthy(t *testing.T) {
 // catches up without dropping the originally-failing block.
 func TestRun_KafkaPublishFailureDoesNotAdvance(t *testing.T) {
 	cfg := types.ChainConfig{
-		ChainID: 8453,
-		Name:    "base",
-		RPCWSS:  "wss://example/ws",
+		ChainID:       8453,
+		Name:          "base",
+		RPCWSS:        "wss://example/ws",
+		SubscribeMode: "blocks",
 	}
 
 	w := &flakyWriter{}
@@ -492,7 +517,7 @@ func TestRun_ReturnsErrChainListenerDeadOnExhaustion(t *testing.T) {
 		reconnectMaxAttempts = prevAttempts
 	})
 
-	cfg := types.ChainConfig{ChainID: 8453, Name: "base", RPCWSS: "wss://example/ws"}
+	cfg := types.ChainConfig{ChainID: 8453, Name: "base", RPCWSS: "wss://example/ws", SubscribeMode: "blocks"}
 	cl := NewChainListener(cfg, NewABIDecoder(), &Producer{chainNames: map[uint64]string{8453: "base"}}).
 		WithDialer(func(_ context.Context, _ string) (EthClient, error) {
 			return nil, errors.New("permanent dial failure")
