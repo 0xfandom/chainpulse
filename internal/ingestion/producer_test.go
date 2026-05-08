@@ -158,6 +158,57 @@ func TestPublishBatch_MixedChainsRejected(t *testing.T) {
 	}
 }
 
+// TestPublishBatch_RebuildsWriterAfterStreak asserts that when the
+// writer fails writerRebuildThreshold (=3) consecutive batches the
+// Producer closes the failing writer and swaps in a fresh one
+// returned by the rebuild closure. Simulates the Kafka-broker-recycle
+// case where the cached writer connection is permanently poisoned.
+func TestPublishBatch_RebuildsWriterAfterStreak(t *testing.T) {
+	bad := &fakeWriter{err: errors.New("connection refused")}
+	good := &fakeWriter{}
+
+	rebuilds := 0
+	p := &Producer{
+		writer:     bad,
+		topic:      "raw_events",
+		chainNames: map[uint64]string{8453: "base"},
+		rebuild: func() (messageWriter, error) {
+			rebuilds++
+			return good, nil
+		},
+	}
+
+	ev := &types.ChainEvent{ChainID: 8453, EventName: "Transfer"}
+
+	// First two failures: streak < threshold, no rebuild yet.
+	for i := 0; i < 2; i++ {
+		if err := p.Publish(context.Background(), ev); err == nil {
+			t.Fatalf("expected error on attempt %d", i+1)
+		}
+	}
+	if rebuilds != 0 {
+		t.Fatalf("expected 0 rebuilds before threshold, got %d", rebuilds)
+	}
+
+	// Third failure crosses the threshold and triggers a rebuild.
+	if err := p.Publish(context.Background(), ev); err == nil {
+		t.Fatal("expected error on threshold attempt")
+	}
+	if rebuilds != 1 {
+		t.Fatalf("expected 1 rebuild after threshold, got %d", rebuilds)
+	}
+
+	// Fourth call hits the freshly-rebuilt good writer; success resets
+	// the streak so a future bad-writer streak would have to grow from
+	// zero again.
+	if err := p.Publish(context.Background(), ev); err != nil {
+		t.Fatalf("expected success after rebuild, got %v", err)
+	}
+	if got := good.callCount(); got != 1 {
+		t.Fatalf("good writer call count = %d, want 1", got)
+	}
+}
+
 // Integration-style test ensuring Publish surfaces a transport error when
 // the broker is unreachable. Uses a short context deadline so the test
 // stays fast even when no broker is running.
