@@ -1,7 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Pause, Play } from "lucide-react";
 import { fmtAmount, fmtSwap, relTime, shortAddr } from "@/lib/format";
@@ -40,7 +40,16 @@ const PROTOS = [
 ];
 
 export default function WhalesPageWrapper() {
-  return <Suspense fallback={null}><WhalesPage /></Suspense>;
+  return (
+    <Suspense fallback={null}>
+      <WhalesPageKeyed />
+    </Suspense>
+  );
+}
+
+function WhalesPageKeyed() {
+  const searchParams = useSearchParams();
+  return <WhalesPage key={searchParams.toString()} />;
 }
 
 function WhalesPage() {
@@ -56,13 +65,6 @@ function WhalesPage() {
   const [chain, setChain] = useState<number | undefined>(initialChain);
   const [proto, setProto] = useState<string>(initialProto);
   const [paused, setPaused] = useState(false);
-
-  useEffect(() => {
-    const c = searchParams.get("chain");
-    const p = searchParams.get("protocol");
-    setChain(c ? (Number.isFinite(parseInt(c, 10)) ? parseInt(c, 10) : undefined) : undefined);
-    setProto(p ?? "all");
-  }, [searchParams]);
 
   const { data, isLoading } = useQuery<{ rows: Whale[] }>({
     queryKey: ["whales", chain, proto],

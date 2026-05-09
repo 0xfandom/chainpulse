@@ -570,13 +570,17 @@ function McpTool({ name, desc, params }: { name: string; desc: string; params: {
   );
 }
 
-function FlowDiagram() {
-  const Box = ({ label, sub }: { label: string; sub?: string }) => (
+function FlowBox({ label, sub }: { label: string; sub?: string }) {
+  return (
     <div className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-center">
       <div className="text-[12px] font-semibold text-[var(--fg-strong)]">{label}</div>
       {sub && <div className="text-[10px] text-[var(--fg-dim)] mt-0.5 font-mono">{sub}</div>}
     </div>
   );
+}
+
+function FlowDiagram() {
+  const Box = FlowBox;
   return (
     <div className="my-6 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/30 p-6">
       <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-center">
