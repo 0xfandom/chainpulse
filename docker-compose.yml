@@ -219,6 +219,29 @@ services:
       mcp:
         condition: service_started
 
+  ui:
+    build:
+      context: ./web
+    image: chainpulse/ui:${VERSION:-dev}
+    container_name: chainpulse-ui
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DB: chainpulse
+      CLICKHOUSE_USER: default
+      PROMETHEUS_URL: http://prometheus:9090
+      ETH_RPC_URL: ${ETH_HTTP_URL:-}
+      POLYGON_RPC_URL: ${POLY_HTTP_URL:-}
+      ARB_RPC_URL: ${ARB_HTTP_URL:-}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
   grafana:
     image: grafana/grafana:11.2.0
     container_name: chainpulse-grafana
