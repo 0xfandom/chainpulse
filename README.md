@@ -21,13 +21,14 @@ Everything runs on your own machine via Docker Compose. No data leaves your lapt
 9. [Available MCP tools](#available-mcp-tools)
 10. [REST and gRPC API](#rest-and-grpc-api)
 11. [WebSocket stream](#websocket-stream)
-12. [Architecture](#architecture)
-13. [Configuration reference](#configuration-reference)
-14. [Metrics and dashboards](#metrics-and-dashboards)
-15. [Troubleshooting](#troubleshooting)
-16. [Development](#development)
-17. [Repository layout](#repository-layout)
-18. [License](#license)
+12. [Web UI](#web-ui)
+13. [Architecture](#architecture)
+14. [Configuration reference](#configuration-reference)
+15. [Metrics and dashboards](#metrics-and-dashboards)
+16. [Troubleshooting](#troubleshooting)
+17. [Development](#development)
+18. [Repository layout](#repository-layout)
+19. [License](#license)
 
 ---
 
@@ -366,6 +367,41 @@ Each connection joins an ephemeral Kafka consumer group at `LastOffset`, so it o
 
 ---
 
+## Web UI
+
+A Next.js explorer that sits on top of the same ClickHouse + Prometheus stack. Lives in `web/` and is shipped as the `ui` service in `docker-compose.yml`.
+
+What it shows:
+
+- Live whale feed across the indexed chains
+- Wallet, transaction, and block lookup (raw RPC fallback for any tx/block, even ones the decoders skip)
+- Per-protocol pages with chain-by-chain breakdown
+- Search bar that parses `whales last 6h on ethereum`, `block 18000000`, raw addresses, raw tx hashes
+- Light + dark themes
+
+### Run via Docker (recommended)
+
+```bash
+cp .env.example .env   # fill in HTTP RPC keys (ETH_HTTP_URL, POLY_HTTP_URL, ARB_HTTP_URL)
+docker compose up -d ui
+open http://localhost:3000
+```
+
+The container talks to `clickhouse` and `prometheus` over the compose network; HTTP RPC URLs are read from the same `.env` the indexer uses.
+
+### Run for local development
+
+```bash
+cd web
+cp .env.example .env.local   # point at your local ClickHouse + Prometheus + RPC URLs
+npm install
+npm run dev
+```
+
+`npm run dev` boots Next.js on `http://localhost:3000`. The API routes inside `src/app/api/**` are server-side and read from `CLICKHOUSE_URL`, `PROMETHEUS_URL`, and the `*_RPC_URL` env vars.
+
+---
+
 ## Architecture
 
 Four independent binaries connected by Kafka topics:
@@ -542,9 +578,10 @@ schema/             ClickHouse DDL (mounted by docker-entrypoint-initdb.d)
 docker/             Dockerfile (multi-stage, all 4 binaries) + ClickHouse memory overlay
 config/             config.example.toml + config.docker.toml
 monitoring/         prometheus.yml + grafana provisioning + dashboard JSON
+web/                Next.js 16 explorer UI (API routes hit ClickHouse + Prometheus + RPC)
 test/integration/   compose-driven e2e test
 examples/           Claude Desktop config sample, SSE curl script, architecture diagram
-.github/workflows/  CI + nightly integration
+.github/workflows/  CI (Go) + Web (Next.js) + nightly integration
 ```
 
 ---

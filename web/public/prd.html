@@ -1,0 +1,1672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>[PRD] ChainPulse — Multi-Chain Indexer + AI Agent Query Layer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --w9:#2C1A0E;--w8:#3F2718;--w7:#5A3A22;--w6:#7A522F;--w5:#9A6D3F;
+    --w4:#BB8A5C;--w3:#D1A87D;--w2:#E4C9A8;--w1:#F1DFC8;--w0:#FAF0E4;
+    --parch:#FDFAF5;--linen:#FFF8EF;
+    --ink:#2C1A0E;--ink-s:#4A3425;--ink-m:#7D6350;
+    --grain:#E3D2BC;--grain-lt:#F0E6D6;
+    --moss:#3D6B47;--moss-lt:#6A9B72;
+    --copper:#B47A4A;--copper-lt:#D4A06C;
+    --slate:#4E6070;--ember:#B85A3A;--sky:#3A7CA5;--plum:#7A4D8A;
+    --ok:#3D7A48;--warn:#B8883A;--bad:#B04A3A;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Inter',sans-serif;background:var(--parch);color:var(--ink);line-height:1.78;font-size:15px;-webkit-font-smoothing:antialiased}
+  .container{max-width:1060px;margin:0 auto;padding:0 36px}
+
+  /* ═══ HERO ═══ */
+  .hero{background:linear-gradient(168deg,var(--w0) 0%,var(--parch) 30%,var(--w1) 70%,var(--w0) 100%);border-bottom:1px solid var(--grain);padding:80px 0 64px;position:relative;overflow:hidden}
+  .hero::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:140px;height:3px;background:linear-gradient(90deg,transparent,var(--w6),transparent)}
+  .hero-badge{display:inline-block;padding:5px 16px;border:1px solid var(--w3);border-radius:20px;font-size:11px;font-weight:700;color:var(--w6);text-transform:uppercase;letter-spacing:2px;margin-bottom:22px;background:rgba(154,109,63,0.06)}
+  .hero h1{font-family:'Libre Baskerville',Georgia,serif;font-size:56px;font-weight:700;line-height:1.1;margin-bottom:18px;color:var(--w8)}
+  .hero-sub{font-size:18px;color:var(--ink-m);max-width:740px;line-height:1.7;font-weight:300}
+  .hero-meta{margin-top:36px;display:flex;gap:24px;flex-wrap:wrap}
+  .hm{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-m);padding:6px 14px;background:rgba(154,109,63,0.05);border:1px solid var(--grain);border-radius:6px}
+  .hm span{color:var(--w7);font-weight:700}
+
+  /* ═══ SECTIONS ═══ */
+  .sect{padding:56px 0;border-bottom:1px solid var(--grain-lt)}
+  .sect:last-child{border-bottom:none}
+  .sect-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2.5px;color:var(--copper);margin-bottom:10px;font-family:'Fira Code',monospace}
+  h2{font-family:'Libre Baskerville',serif;font-size:32px;font-weight:700;margin-bottom:20px;color:var(--w8)}
+  h3{font-family:'Libre Baskerville',serif;font-size:19px;font-weight:700;margin:36px 0 14px;color:var(--w7);padding-bottom:8px;border-bottom:1px solid var(--grain-lt)}
+  h4{font-size:15px;font-weight:700;margin:24px 0 10px;color:var(--copper)}
+  p{margin-bottom:14px;color:var(--ink-s)}
+  strong{color:var(--ink);font-weight:700}
+
+  /* ═══ DIAGRAMS ═══ */
+  .diagram{background:#fff;border:1px solid var(--grain);border-radius:8px;padding:32px 24px;margin:24px 0;overflow-x:auto}
+  .diagram .mermaid{display:flex;justify-content:center}
+  .diagram-cap{text-align:center;font-size:12.5px;color:var(--ink-m);margin-top:16px;font-style:italic}
+
+  /* ═══ THINKING ═══ */
+  .think{display:grid;grid-template-columns:52px 1fr;gap:18px;margin-bottom:24px;padding:24px;background:linear-gradient(135deg,var(--w0),var(--linen));border-left:3px solid var(--copper);border-radius:0 8px 8px 0}
+  .think-ico{width:52px;height:52px;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--w1);border-radius:50%;flex-shrink:0}
+  .think h4{font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--w8);margin:0 0 6px;border:none;padding:0}
+  .think p{font-size:13.5px;color:var(--ink-s);line-height:1.65;margin:0}
+
+  /* ═══ CODE ═══ */
+  pre{background:var(--ink);color:#DACCBE;font-family:'Fira Code',monospace;font-size:12.5px;line-height:1.72;padding:24px;border-radius:8px;margin:14px 0;overflow-x:auto;border:1px solid #3a2a1e}
+  code{font-family:'Fira Code',monospace;font-size:13px;background:var(--w0);padding:2px 7px;border-radius:4px;color:var(--copper)}
+  pre code{background:none;padding:0;color:inherit}
+  .code-tag{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;padding:3px 10px;border-radius:4px;margin-bottom:6px}
+  .code-tag.go{background:rgba(0,173,216,0.1);color:#00ADD8}
+  .code-tag.yaml{background:rgba(61,107,71,0.1);color:var(--moss)}
+  .code-tag.proto{background:rgba(122,77,138,0.1);color:var(--plum)}
+  .code-tag.docker{background:rgba(78,96,112,0.1);color:var(--slate)}
+  .code-tag.sql{background:rgba(180,122,74,0.12);color:var(--copper)}
+  .code-tag.bash{background:rgba(184,90,58,0.1);color:var(--ember)}
+  .code-tag.json{background:rgba(58,124,165,0.1);color:var(--sky)}
+
+  /* ═══ TABLES ═══ */
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:13.5px}
+  th{text-align:left;padding:11px 16px;background:var(--w0);border-bottom:2px solid var(--copper);font-weight:700;color:var(--w8);font-size:11.5px;text-transform:uppercase;letter-spacing:.5px}
+  td{padding:11px 16px;border-bottom:1px solid var(--grain-lt);color:var(--ink-s)}
+  tr:hover td{background:rgba(154,109,63,0.03)}
+
+  /* ═══ CALLOUTS ═══ */
+  .callout{border-radius:8px;padding:20px 24px;margin:20px 0;border-left:4px solid}
+  .callout-crit{background:rgba(176,74,58,0.05);border-color:var(--ember)}
+  .callout-crit .ct{color:var(--ember)}
+  .callout-info{background:rgba(58,124,165,0.05);border-color:var(--sky)}
+  .callout-info .ct{color:var(--sky)}
+  .callout-perf{background:rgba(61,107,71,0.05);border-color:var(--moss)}
+  .callout-perf .ct{color:var(--moss)}
+  .callout-warn{background:rgba(184,136,58,0.05);border-color:var(--warn)}
+  .callout-warn .ct{color:var(--warn)}
+  .ct{font-weight:800;font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px}
+
+  /* ═══ GRIDS ═══ */
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:18px 0}
+  .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin:18px 0}
+  .gc{background:#fff;border:1px solid var(--grain);border-radius:8px;padding:22px}
+  .gc h5{font-size:14px;font-weight:700;color:var(--w8);margin-bottom:8px}
+  .gc p{font-size:13px;margin:0}
+  .mv{font-family:'Fira Code',monospace;font-size:28px;font-weight:700;color:var(--moss)}
+  .ml{font-size:11px;color:var(--ink-m);text-transform:uppercase;letter-spacing:1.2px;margin-top:4px}
+
+  /* ═══ DAY HEADER ═══ */
+  .dh{background:#fff;border:1px solid var(--grain);border-radius:8px;padding:28px 32px;margin:0 0 28px;display:flex;align-items:center;gap:24px}
+  .dn{font-family:'Fira Code',monospace;font-size:48px;font-weight:700;line-height:1}
+  .dn.d1{color:var(--copper)}.dn.d2{color:var(--sky)}.dn.d3{color:var(--warn)}.dn.d4{color:var(--plum)}.dn.d5{color:var(--moss)}
+  .di h3{margin:0;padding:0;border:none;font-size:21px}
+  .di p{margin:4px 0 0;font-size:14px}
+
+  /* ═══ TOC ═══ */
+  .toc{background:#fff;border:1px solid var(--grain);border-radius:8px;padding:32px;margin:40px 0}
+  .toc h3{margin-top:0;border:none}
+  .toc ol{list-style:none;counter-reset:toc;padding-left:0}
+  .toc>ol>li{counter-increment:toc;margin-bottom:8px}
+  .toc>ol>li::before{content:counter(toc,decimal-leading-zero) ".";color:var(--copper);font-weight:700;font-family:'Fira Code',monospace;font-size:12px;margin-right:10px}
+  .toc a{color:var(--ink-s);text-decoration:none;font-weight:500;transition:color .2s}
+  .toc a:hover{color:var(--copper)}
+  .toc ol ol{padding-left:36px;margin-top:6px}
+  .toc ol ol li{margin-bottom:4px;font-size:13.5px}
+  .toc ol ol li::before{content:none}
+  .toc ol ol li a{color:var(--ink-m)}
+  .toc ol ol li a::before{content:"›";margin-right:8px;color:var(--copper)}
+
+  /* ═══ BADGES ═══ */
+  .tech{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+  .bdg{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;border:1px solid}
+  .bdg-go{background:rgba(0,173,216,0.06);border-color:rgba(0,173,216,0.2);color:#00ADD8}
+  .bdg-infra{background:rgba(61,107,71,0.06);border-color:rgba(61,107,71,0.2);color:var(--moss)}
+  .bdg-data{background:rgba(180,122,74,0.06);border-color:rgba(180,122,74,0.2);color:var(--copper)}
+  .bdg-ai{background:rgba(122,77,138,0.06);border-color:rgba(122,77,138,0.2);color:var(--plum)}
+
+  /* ═══ CHECKLIST ═══ */
+  .chk{list-style:none;padding:0;margin:14px 0}
+  .chk li{padding:8px 0 8px 30px;position:relative;color:var(--ink-s);font-size:13.5px;border-bottom:1px solid var(--grain-lt)}
+  .chk li:last-child{border-bottom:none}
+  .chk li::before{content:'☐';position:absolute;left:0;color:var(--copper);font-size:15px}
+
+  .foot{text-align:center;padding:48px 0 36px;border-top:1px solid var(--grain);margin-top:40px}
+  .foot p{font-size:11px;color:var(--ink-m);font-family:'Fira Code',monospace;letter-spacing:1px}
+
+  @media(max-width:768px){.hero h1{font-size:32px}h2{font-size:24px}.g2,.g3{grid-template-columns:1fr}.hero-meta{flex-direction:column;gap:10px}.dh{flex-direction:column;text-align:center}}
+  @media print{body{font-size:11px}.container{max-width:100%;padding:0 16px}.sect{break-inside:avoid}}
+  .mermaid svg{max-width:100%;font-family:'Inter',sans-serif}
+  .mermaid .node rect,.mermaid .node polygon{rx:6;ry:6}
+  .mermaid .cluster rect{rx:8;ry:8}
+  .mermaid .edgeLabel{background-color:var(--parch);padding:2px 6px;font-size:11px}
+  .mermaid .messageText{font-size:12px}
+  .mermaid .actor{stroke:var(--w4)}
+  .mermaid .activationLine{stroke:var(--w3)}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════ HERO ═══════════════════ -->
+<header class="hero">
+  <div class="container">
+    <div class="hero-badge">Product Requirements Document v1.0</div>
+    <h1>ChainPulse</h1>
+    <p class="hero-sub">Multi-chain blockchain event indexer built in Go with Kafka-backed ingestion, ClickHouse storage, sub-second query latency, and an MCP server that lets AI agents query live on-chain data conversationally. Open source. Built in 5 days with Claude.</p>
+    <div class="hero-meta">
+      <div class="hm">Stack: <span>Go</span></div>
+      <div class="hm">Pipeline: <span>Kafka → ClickHouse</span></div>
+      <div class="hm">Chains: <span>4+ EVM</span></div>
+      <div class="hm">API: <span>REST + gRPC + MCP</span></div>
+      <div class="hm">Build: <span>5 Days with Claude</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+<!-- ═══════════════════ TOC ═══════════════════ -->
+<nav class="toc">
+  <h3>Table of Contents</h3>
+  <ol>
+    <li><a href="#t0">Deep Thinking — Architecture Rationale</a></li>
+    <li><a href="#t1">System Overview &amp; Design Philosophy</a></li>
+    <li><a href="#t2">High-Level Architecture</a>
+      <ol>
+        <li><a href="#t2a">System Topology Diagram</a></li>
+        <li><a href="#t2b">Hot-Path: Block → Indexed → Queryable</a></li>
+        <li><a href="#t2c">Data Flow Pipeline</a></li>
+      </ol>
+    </li>
+    <li><a href="#t3">Day 1 — Foundation &amp; Multi-Chain Ingestion</a></li>
+    <li><a href="#t4">Day 2 — Processing Pipeline &amp; Protocol Decoders</a></li>
+    <li><a href="#t5">Day 3 — API Layer: REST, gRPC, WebSocket</a></li>
+    <li><a href="#t6">Day 4 — MCP Server &amp; AI Agent Tooling</a></li>
+    <li><a href="#t7">Day 5 — Deploy, Monitor &amp; Harden</a></li>
+    <li><a href="#t8">Multi-Chain Configuration Matrix</a></li>
+    <li><a href="#t9">Protocol Decoder Coverage</a></li>
+    <li><a href="#t10">Performance Benchmarks &amp; Targets</a></li>
+    <li><a href="#t11">Repository Structure</a></li>
+    <li><a href="#t12">Security &amp; Operational Risk</a></li>
+  </ol>
+</nav>
+
+
+<!-- ═══════════════════ SECTION 0 — DEEP THINKING ═══════════════════ -->
+<section class="sect" id="t0">
+  <div class="sect-label">Deep Thinking</div>
+  <h2>Architecture Rationale — Why Every Decision Was Made</h2>
+
+  <p>Every architectural choice in ChainPulse was made to solve a specific problem. Understanding the <strong>why</strong> behind each decision is what makes this a production system instead of a tutorial project.</p>
+
+  <div class="think">
+    <div class="think-ico">🧠</div>
+    <div>
+      <h4>Why Go Over Rust, TypeScript, or Python?</h4>
+      <p>This project targets four JDs simultaneously: Lightning Labs (Go-native org, LND is Go), Blackwing (high-throughput trading infra), Zerion (multi-chain wallet backend), and a Senior Lead Backend role (production Go). Go is the lingua franca of blockchain infrastructure — Geth, Prysm, Cosmos SDK, LND are all Go. It compiles to a single static binary, has first-class concurrency via goroutines, and the go-ethereum libraries (abigen, ethclient) are battle-tested in production at every major blockchain company. Rust would be faster but narrows the audience. TypeScript would be easier but signals "frontend dev doing backend." Go says "I build infrastructure."</p>
+    </div>
+  </div>
+
+  <div class="think">
+    <div class="think-ico">⚡</div>
+    <div>
+      <h4>Why Kafka Instead of Direct Database Writes?</h4>
+      <p>The naive approach: listen to blocks → decode events → write to database. This breaks at scale for three reasons. (1) <strong>Backpressure</strong> — if ClickHouse has a slow write, the ingestion goroutine blocks and misses the next block. Kafka decouples producer from consumer: ingestion never waits for storage. (2) <strong>Replay</strong> — if you add a new protocol decoder, you need to reprocess historical blocks. With Kafka retention, you replay from any offset without re-fetching from RPC. (3) <strong>Fan-out</strong> — the same raw event stream feeds the position aggregator, the balance tracker, AND the real-time WebSocket feed. Without Kafka, you'd need to duplicate decoding logic in three places. The Kafka topic structure (raw_events, decoded_events, positions_update) mirrors the processing stages exactly.</p>
+    </div>
+  </div>
+
+  <div class="think">
+    <div class="think-ico">🗄️</div>
+    <div>
+      <h4>Why ClickHouse Over PostgreSQL or MongoDB?</h4>
+      <p>Blockchain indexers have a specific data profile: <strong>append-heavy writes, analytical reads, time-series queries</strong>. "Show me all USDC transfers over $10K in the last 24 hours across 4 chains" is a scan over millions of rows with filters — exactly what columnar databases optimize for. PostgreSQL handles this at small scale but degrades past 100M rows. MongoDB handles flexible schemas but is terrible at analytical aggregations. ClickHouse processes 1B+ rows per second on analytical queries, compresses columnar data 10-20x, and handles the append-only write pattern natively via MergeTree engines. The trade-off: no ACID transactions, no UPDATE/DELETE (append-only). For an indexer, this is fine — blockchain data is immutable.</p>
+    </div>
+  </div>
+
+  <div class="think">
+    <div class="think-ico">🤖</div>
+    <div>
+      <h4>Why an MCP Server? What Problem Does It Solve?</h4>
+      <p>This is the Lightning Labs differentiator. An MCP (Model Context Protocol) server exposes on-chain data as <strong>AI agent tools</strong>. Without it, an AI agent that wants to check a wallet's DeFi positions needs to: (1) know the Aave V3 contract address, (2) construct the right ABI call, (3) decode the response, (4) repeat for every protocol on every chain. With the MCP server, the agent calls <code>get_wallet_positions("0x...")</code> and gets a structured JSON response with all positions across all chains. The MCP server is the translation layer between "human question" and "on-chain data query." This is exactly what Lightning Labs means by "agent-facing tooling" and "agentic workflows" in their JD.</p>
+    </div>
+  </div>
+
+  <div class="think">
+    <div class="think-ico">🔄</div>
+    <div>
+      <h4>Why Redis Sits Between ClickHouse and the API?</h4>
+      <p>ClickHouse excels at analytical queries but has <strong>higher latency on point lookups</strong> (single wallet balance, single token price). The API needs sub-50ms response times for "what tokens does 0x... hold?" — a point lookup, not an analytical scan. Redis caches the hot data: current wallet positions, recent token prices, active DeFi positions. Cache invalidation is event-driven: when the processor writes a new position to ClickHouse, it simultaneously updates the Redis cache via Kafka consumer. This gives you ClickHouse's analytical power for complex queries AND Redis's speed for simple lookups — without the API layer needing to know which backend to hit (the cache-aside pattern handles this transparently).</p>
+    </div>
+  </div>
+
+  <div class="think">
+    <div class="think-ico">🏗️</div>
+    <div>
+      <h4>Why Separate Binaries Instead of One Monolith?</h4>
+      <p>Unlike Charon (where latency between components matters), ChainPulse processes are <strong>pipeline stages with different scaling profiles</strong>. The indexer is I/O-bound (waiting on RPC). The processor is CPU-bound (decoding ABIs, aggregating positions). The API is connection-bound (serving HTTP clients). A single binary forces all three to share the same goroutine pool and memory space. Separate binaries let you run 1 indexer, 3 processors (one per chain group), and 2 API servers behind a load balancer. Kafka is the glue — each binary is a Kafka producer or consumer. Docker Compose runs them as a stack locally; Kubernetes scales them independently in production.</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════ SECTION 1 — OVERVIEW ═══════════════════ -->
+<section class="sect" id="t1">
+  <div class="sect-label">Section 01</div>
+  <h2>System Overview &amp; Design Philosophy</h2>
+
+  <p><strong>ChainPulse</strong> is a production-grade multi-chain blockchain indexer that ingests, decodes, and aggregates on-chain data — then exposes it through REST/gRPC APIs for dashboards and an MCP server for AI agents. It answers questions like "What are all open Aave borrow positions for this wallet across 4 chains?" in under 50ms.</p>
+
+  <h3>Core Design Principles</h3>
+  <div class="g3">
+    <div class="gc"><h5>Multi-Chain Native</h5><p>Concurrent goroutines per chain with independent WebSocket connections, backpressure handling, and automatic reconnection with exponential backoff.</p></div>
+    <div class="gc"><h5>Pipeline Architecture</h5><p>Kafka-backed: ingestion → decoding → aggregation → storage. Each stage is independently scalable. Replay any time window without re-fetching from RPC.</p></div>
+    <div class="gc"><h5>Protocol-Agnostic Decoders</h5><p>Adding a new DeFi protocol is one Go interface implementation. The core pipeline doesn't change. Uniswap, Aave, Compound, ERC-20 ship on day one.</p></div>
+    <div class="gc"><h5>AI-Agent Ready</h5><p>MCP server exposes every query as a structured tool. Claude, GPT, or any MCP-compatible agent can query live on-chain data without knowing contract ABIs.</p></div>
+    <div class="gc"><h5>Sub-Second Queries</h5><p>ClickHouse for analytical scans, Redis for hot lookups. p99 query latency under 50ms for wallet positions, under 200ms for cross-chain aggregations.</p></div>
+    <div class="gc"><h5>5-Day Build with Claude</h5><p>Day 1: ingest. Day 2: process. Day 3: serve. Day 4: AI-enable. Day 5: deploy. Each day produces a working, testable layer.</p></div>
+  </div>
+
+  <h3>Technology Stack</h3>
+  <table>
+    <thead><tr><th>Concern</th><th>Technology</th><th>Rationale</th></tr></thead>
+    <tbody>
+      <tr><td>Core Language</td><td><span class="bdg bdg-go">Go 1.22+</span></td><td>Goroutines for concurrency, go-ethereum for ABI/RPC, single binary deploys</td></tr>
+      <tr><td>Chain Interaction</td><td><span class="bdg bdg-go">go-ethereum (ethclient)</span></td><td>Battle-tested Ethereum client library, WebSocket subscriptions, ABI binding</td></tr>
+      <tr><td>Message Queue</td><td><span class="bdg bdg-infra">Apache Kafka</span></td><td>Backpressure handling, replay capability, fan-out to multiple consumers</td></tr>
+      <tr><td>Analytical Storage</td><td><span class="bdg bdg-data">ClickHouse</span></td><td>Columnar, 1B+ rows/sec scans, 10-20x compression, MergeTree for append-only</td></tr>
+      <tr><td>Hot Cache</td><td><span class="bdg bdg-data">Redis</span></td><td>Sub-ms point lookups for wallet balances and current positions</td></tr>
+      <tr><td>REST API</td><td><span class="bdg bdg-go">Gin</span></td><td>Fast HTTP router, middleware support, production-proven</td></tr>
+      <tr><td>Internal RPC</td><td><span class="bdg bdg-go">gRPC</span></td><td>Typed service contracts, streaming support, internal module comms</td></tr>
+      <tr><td>AI Agent Layer</td><td><span class="bdg bdg-ai">MCP Protocol</span></td><td>Model Context Protocol server — exposes tools to Claude, GPT, any LLM agent</td></tr>
+      <tr><td>Observability</td><td><span class="bdg bdg-infra">Prometheus + Grafana</span></td><td>Metrics, dashboards, alerting — zero cost self-hosted</td></tr>
+      <tr><td>Logging</td><td><span class="bdg bdg-go">zerolog</span></td><td>Structured JSON logging with zero-allocation, correlation IDs</td></tr>
+      <tr><td>Deployment</td><td><span class="bdg bdg-infra">Docker Compose</span></td><td>Full stack: indexer + processor + API + MCP + Kafka + ClickHouse + Redis</td></tr>
+    </tbody>
+  </table>
+</section>
+
+
+<!-- ═══════════════════ SECTION 2 — ARCHITECTURE ═══════════════════ -->
+<section class="sect" id="t2">
+  <div class="sect-label">Section 02</div>
+  <h2>High-Level System Architecture</h2>
+
+  <p>ChainPulse is organized as a <strong>pipeline of four independent services</strong> connected by Kafka topics. Each service is a separate Go binary that can be scaled independently.</p>
+
+  <div class="diagram" id="t2a">
+    <div class="mermaid">
+flowchart TB
+    subgraph CHAINS["MULTI-CHAIN RPC INPUTS"]
+        ETH["Ethereum WSS"]
+        ARB["Arbitrum WSS"]
+        BASE_C["Base WSS"]
+        POLY["Polygon WSS"]
+    end
+
+    subgraph INDEXER["INDEXER SERVICE"]
+        direction TB
+        LISTEN["Chain Listeners<br/>1 goroutine per chain"]
+        DECODE["ABI Decoder<br/>log to structured event"]
+        PUB["Kafka Producer<br/>raw_events topic"]
+    end
+
+    subgraph KAFKA_Q["APACHE KAFKA"]
+        T1["raw_events"]
+        T2["decoded_events"]
+        T3["positions_update"]
+    end
+
+    subgraph PROCESSOR["PROCESSOR SERVICE"]
+        direction TB
+        CONSUME["Kafka Consumer<br/>raw_events reader"]
+        PROTO["Protocol Decoders<br/>Uniswap, Aave, ERC-20"]
+        AGG["Position Aggregator<br/>wallet-centric view"]
+        WRITE_S["Storage Writer<br/>ClickHouse + Redis"]
+    end
+
+    subgraph STORAGE["STORAGE LAYER"]
+        CH["ClickHouse<br/>analytical queries"]
+        RD["Redis<br/>hot cache"]
+    end
+
+    subgraph API_SVC["API SERVICE"]
+        REST["REST API<br/>Gin router"]
+        GRPC_S["gRPC Service<br/>internal queries"]
+        WS_S["WebSocket<br/>live event stream"]
+    end
+
+    subgraph MCP_SVC["MCP SERVICE"]
+        MCP_N["MCP Server<br/>AI agent tools"]
+        TOOLS["Tool Schemas<br/>wallet positions<br/>token transfers<br/>protocol stats"]
+    end
+
+    subgraph OBS["OBSERVABILITY"]
+        PROM["Prometheus"]
+        GRAF["Grafana"]
+    end
+
+    ETH --> LISTEN
+    ARB --> LISTEN
+    BASE_C --> LISTEN
+    POLY --> LISTEN
+    LISTEN --> DECODE --> PUB
+    PUB --> T1
+    T1 --> CONSUME
+    CONSUME --> PROTO
+    PROTO --> T2
+    PROTO --> AGG
+    AGG --> T3
+    AGG --> WRITE_S
+    WRITE_S --> CH
+    WRITE_S --> RD
+    CH --> REST
+    CH --> GRPC_S
+    RD --> REST
+    RD --> GRPC_S
+    REST --> WS_S
+    CH --> MCP_N
+    RD --> MCP_N
+    MCP_N --> TOOLS
+    PUB -.-> PROM
+    WRITE_S -.-> PROM
+    REST -.-> PROM
+    PROM --> GRAF
+    </div>
+    <div class="diagram-cap">Figure 2.1 — System Topology: Multi-Chain RPC → Kafka Pipeline → ClickHouse/Redis → REST/gRPC/MCP APIs</div>
+  </div>
+
+  <div class="think">
+    <div class="think-ico">🔍</div>
+    <div>
+      <h4>Why This Topology?</h4>
+      <p>The architecture separates <strong>read-heavy</strong> (API/MCP — serving queries) from <strong>write-heavy</strong> (indexer/processor — ingesting blocks). Kafka is the boundary: everything left of Kafka produces events, everything right consumes them. This means you can restart the API server without missing blocks, replay the processor without re-fetching from RPC, and scale each service independently. The MCP server is intentionally a separate binary so it can be deployed alongside an AI agent orchestrator without pulling in the entire indexing stack.</p>
+    </div>
+  </div>
+
+  <h3 id="t2b">Hot-Path: Block Arrives → Data Queryable</h3>
+
+  <div class="diagram">
+    <div class="mermaid">
+sequenceDiagram
+    participant C as Chain RPC
+    participant I as Indexer
+    participant K as Kafka
+    participant P as Processor
+    participant CH as ClickHouse
+    participant R as Redis
+    participant A as API Server
+
+    C->>I: WebSocket newHead and logs
+    activate I
+    I->>I: Decode raw logs via ABI
+    I->>K: Produce to raw_events
+    deactivate I
+    K->>P: Consume raw_events
+    activate P
+    P->>P: Protocol decode Uniswap Aave ERC20
+    P->>P: Aggregate wallet positions
+    P->>CH: Batch insert decoded events
+    P->>R: Update hot cache
+    P->>K: Produce to positions_update
+    deactivate P
+    A->>R: Point lookup cache hit
+    R-->>A: Cached position data
+    A->>CH: Analytical query cache miss
+    CH-->>A: Query result
+    A-->>A: Return JSON to client
+    </div>
+    <div class="diagram-cap">Figure 2.2 — Hot-Path: block event → Kafka → processed → queryable in ClickHouse/Redis within ~2 seconds of block confirmation</div>
+  </div>
+
+  <div class="callout callout-perf">
+    <div class="ct">Latency Budget</div>
+    <p><strong>Block Ingestion:</strong> &lt;100ms — WebSocket receive + ABI decode + Kafka produce. <strong>Processing:</strong> &lt;500ms — Protocol decode + aggregation + ClickHouse batch write + Redis update. <strong>Query (cache hit):</strong> &lt;5ms via Redis. <strong>Query (cache miss):</strong> &lt;50ms via ClickHouse. <strong>Total block-to-queryable:</strong> ~1-2 seconds.</p>
+  </div>
+
+  <h3 id="t2c">Data Flow: Kafka Topic Architecture</h3>
+
+  <div class="diagram">
+    <div class="mermaid">
+flowchart LR
+    subgraph PRODUCE["PRODUCERS"]
+        IDX["Indexer"]
+        PROC_P["Processor"]
+    end
+
+    subgraph TOPICS["KAFKA TOPICS"]
+        RE["raw_events<br/>ABI-decoded logs<br/>partitioned by chain_id"]
+        DE["decoded_events<br/>protocol-specific events<br/>Swap, Borrow, Transfer"]
+        PU["positions_update<br/>wallet position changes<br/>balance deltas"]
+    end
+
+    subgraph CONSUMERS_G["CONSUMERS"]
+        PROC2["Processor<br/>reads raw, writes decoded"]
+        WS_FEED["WebSocket Feed<br/>streams decoded_events"]
+        ALERT["Alert Engine<br/>whale transfers, large swaps"]
+    end
+
+    IDX -->|"produce"| RE
+    RE -->|"consume"| PROC2
+    PROC2 -->|"produce"| DE
+    PROC2 -->|"produce"| PU
+    DE -->|"consume"| WS_FEED
+    PU -->|"consume"| ALERT
+    </div>
+    <div class="diagram-cap">Figure 2.3 — Kafka Topic Architecture: three topics mirror the three processing stages. Partitioned by chain_id for parallel consumption.</div>
+  </div>
+
+  <div class="think">
+    <div class="think-ico">📊</div>
+    <div>
+      <h4>Why Partition by chain_id?</h4>
+      <p>Each Kafka topic is partitioned by <code>chain_id</code>. This guarantees that all events from Arbitrum go to the same partition, maintaining <strong>per-chain ordering</strong>. A Swap event on Arbitrum block 200M must be processed before a Swap on block 200M+1. Partitioning by chain_id means you can run N consumer instances where each owns a subset of chains — horizontal scaling without losing ordering guarantees. If you partitioned by something else (e.g., contract address), you'd lose the ability to reason about block ordering within a chain.</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════ SECTION 3 — DAY 1 ═══════════════════ -->
+<section class="sect" id="t3">
+  <div class="sect-label">Day 01</div>
+  <h2>Foundation &amp; Multi-Chain Ingestion</h2>
+
+  <div class="dh">
+    <div class="dn d1">01</div>
+    <div class="di">
+      <h3>Foundation — Project Structure, Chain Listeners, Kafka Producer</h3>
+      <p>Scaffold the Go project, define core types, build the multi-chain WebSocket listener, decode raw logs, and produce structured events to Kafka.</p>
+    </div>
+  </div>
+
+  <h3>Core Types</h3>
+
+  <span class="code-tag go">Go — Core Types</span>
+  <pre><code>// internal/types/events.go
+package types
+
+import (
+    "math/big"
+    "time"
+
+    "github.com/ethereum/go-ethereum/common"
+)
+
+// ChainEvent is the normalized event structure produced by the indexer.
+// Every raw log from every chain becomes one of these.
+type ChainEvent struct {
+    ChainID     uint64         `json:"chain_id"`
+    BlockNumber uint64         `json:"block_number"`
+    TxHash      common.Hash    `json:"tx_hash"`
+    LogIndex    uint           `json:"log_index"`
+    Contract    common.Address `json:"contract"`
+    EventName   string         `json:"event_name"`   // "Transfer", "Swap", "Borrow"
+    RawTopics   []common.Hash  `json:"raw_topics"`
+    RawData     []byte         `json:"raw_data"`
+    Timestamp   time.Time      `json:"timestamp"`
+}
+
+// DecodedEvent is the output of protocol decoders.
+// It carries protocol-specific meaning on top of the raw event.
+type DecodedEvent struct {
+    ChainEvent
+    Protocol    string                 `json:"protocol"`     // "uniswap_v3", "aave_v3", "erc20"
+    EventType   string                 `json:"event_type"`   // "swap", "borrow", "transfer"
+    Params      map[string]interface{} `json:"params"`       // decoded parameters
+}
+
+// WalletPosition represents a wallet's aggregated state across protocols.
+type WalletPosition struct {
+    Wallet      common.Address `json:"wallet"`
+    ChainID     uint64         `json:"chain_id"`
+    Protocol    string         `json:"protocol"`
+    PositionType string        `json:"position_type"` // "supply", "borrow", "lp", "hold"
+    Token       common.Address `json:"token"`
+    TokenSymbol string         `json:"token_symbol"`
+    Amount      *big.Int       `json:"amount"`
+    ValueUSD    float64        `json:"value_usd"`
+    UpdatedAt   time.Time      `json:"updated_at"`
+    BlockNumber uint64         `json:"block_number"`
+}
+
+// ChainConfig holds the configuration for a single chain.
+type ChainConfig struct {
+    ChainID       uint64   `toml:"chain_id"`
+    Name          string   `toml:"name"`
+    RPCWSS        string   `toml:"rpc_wss"`
+    RPCHTTP       string   `toml:"rpc_http"`
+    StartBlock    uint64   `toml:"start_block"`
+    Confirmations uint64   `toml:"confirmations"`  // blocks to wait
+    Contracts     []string `toml:"contracts"`       // monitored contracts
+}</code></pre>
+
+  <h3>Multi-Chain Listener</h3>
+
+  <div class="diagram">
+    <div class="mermaid">
+flowchart LR
+    subgraph WS["WebSocket Connections"]
+        W1["Ethereum WSS"]
+        W2["Arbitrum WSS"]
+        W3["Base WSS"]
+        W4["Polygon WSS"]
+    end
+
+    subgraph GR["Goroutines - 1 per chain"]
+        G1["ethListener"]
+        G2["arbListener"]
+        G3["baseListener"]
+        G4["polyListener"]
+    end
+
+    subgraph DEC["ABI Decoder"]
+        D["DecodeLog<br/>route by event sig"]
+    end
+
+    subgraph KP["Kafka Producer"]
+        KN["Produce to<br/>raw_events topic"]
+    end
+
+    W1 --> G1
+    W2 --> G2
+    W3 --> G3
+    W4 --> G4
+    G1 --> D
+    G2 --> D
+    G3 --> D
+    G4 --> D
+    D --> KN
+    </div>
+    <div class="diagram-cap">Figure 3.1 — Multi-Chain Listener: one goroutine per chain → shared ABI decoder → Kafka producer</div>
+  </div>
+
+  <span class="code-tag go">Go — Chain Listener</span>
+  <pre><code>// internal/ingestion/listener.go
+package ingestion
+
+import (
+    "context"
+    "math/big"
+    "time"
+
+    "github.com/ethereum/go-ethereum"
+    "github.com/ethereum/go-ethereum/core/types"
+    "github.com/ethereum/go-ethereum/ethclient"
+    "github.com/rs/zerolog/log"
+    "github.com/segmentio/kafka-go"
+)
+
+type ChainListener struct {
+    chainID   uint64
+    chainName string
+    wsURL     string
+    producer  *kafka.Writer
+    decoder   *ABIDecoder
+}
+
+func (cl *ChainListener) Run(ctx context.Context) error {
+    client, err := ethclient.DialContext(ctx, cl.wsURL)
+    if err != nil {
+        return fmt.Errorf("dial %s: %w", cl.chainName, err)
+    }
+    defer client.Close()
+
+    log.Info().
+        Str("chain", cl.chainName).
+        Uint64("chain_id", cl.chainID).
+        Msg("connected to WebSocket")
+
+    // Subscribe to new block headers
+    headers := make(chan *types.Header)
+    sub, err := client.SubscribeNewHead(ctx, headers)
+    if err != nil {
+        return fmt.Errorf("subscribe %s: %w", cl.chainName, err)
+    }
+
+    for {
+        select {
+        case err := <-sub.Err():
+            log.Error().Err(err).Str("chain", cl.chainName).Msg("subscription error")
+            return cl.reconnect(ctx) // exponential backoff reconnection
+
+        case header := <-headers:
+            start := time.Now()
+
+            // Fetch all logs for this block
+            blockNum := header.Number
+            query := ethereum.FilterQuery{
+                FromBlock: blockNum,
+                ToBlock:   blockNum,
+            }
+            logs, err := client.FilterLogs(ctx, query)
+            if err != nil {
+                log.Error().Err(err).Uint64("block", blockNum.Uint64()).Msg("filter logs failed")
+                continue
+            }
+
+            // Decode and publish each log to Kafka
+            for _, vLog := range logs {
+                event, err := cl.decoder.Decode(cl.chainID, vLog, header.Time)
+                if err != nil {
+                    continue // skip unrecognized events
+                }
+
+                payload, _ := json.Marshal(event)
+                cl.producer.WriteMessages(ctx, kafka.Message{
+                    Key:   []byte(fmt.Sprintf("%d", cl.chainID)),
+                    Value: payload,
+                    Topic: "raw_events",
+                })
+            }
+
+            recordBlockProcessing(cl.chainName, blockNum.Uint64(), time.Since(start))
+
+        case <-ctx.Done():
+            return nil
+        }
+    }
+}
+
+// reconnect implements exponential backoff reconnection
+func (cl *ChainListener) reconnect(ctx context.Context) error {
+    backoff := time.Second
+    for attempt := 0; attempt < 10; attempt++ {
+        log.Warn().Str("chain", cl.chainName).Dur("backoff", backoff).Msg("reconnecting")
+        time.Sleep(backoff)
+        if err := cl.Run(ctx); err == nil {
+            return nil
+        }
+        backoff *= 2
+        if backoff > 30*time.Second {
+            backoff = 30 * time.Second
+        }
+    }
+    return fmt.Errorf("failed to reconnect to %s after 10 attempts", cl.chainName)
+}</code></pre>
+
+  <span class="code-tag go">Go — ABI Decoder</span>
+  <pre><code>// internal/ingestion/decoder.go
+package ingestion
+
+import (
+    "github.com/ethereum/go-ethereum/accounts/abi"
+    "github.com/ethereum/go-ethereum/common"
+    ethtypes "github.com/ethereum/go-ethereum/core/types"
+)
+
+// Well-known event signatures
+var (
+    ERC20TransferSig = common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")
+    UniswapSwapSig   = common.HexToHash("0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67")
+    AaveBorrowSig    = common.HexToHash("0xb3d084820fb1a9decffb176436bd02558d15fac9b0ddfed8c465bc7359d7dce0")
+    AaveRepaySig     = common.HexToHash("0xa534c8dbe71f871f9f3f77571e29fe5e86e1a4e0b063ccf04c85464e48505828")
+)
+
+type ABIDecoder struct {
+    erc20ABI   abi.ABI
+    uniswapABI abi.ABI
+    aaveABI    abi.ABI
+}
+
+func (d *ABIDecoder) Decode(chainID uint64, vLog ethtypes.Log, blockTime uint64) (*ChainEvent, error) {
+    if len(vLog.Topics) == 0 {
+        return nil, fmt.Errorf("no topics")
+    }
+
+    eventName := "unknown"
+    switch vLog.Topics[0] {
+    case ERC20TransferSig:
+        eventName = "Transfer"
+    case UniswapSwapSig:
+        eventName = "Swap"
+    case AaveBorrowSig:
+        eventName = "Borrow"
+    case AaveRepaySig:
+        eventName = "Repay"
+    default:
+        return nil, fmt.Errorf("unrecognized event")
+    }
+
+    return &ChainEvent{
+        ChainID:     chainID,
+        BlockNumber: vLog.BlockNumber,
+        TxHash:      vLog.TxHash,
+        LogIndex:    vLog.Index,
+        Contract:    vLog.Address,
+        EventName:   eventName,
+        RawTopics:   vLog.Topics,
+        RawData:     vLog.Data,
+        Timestamp:   time.Unix(int64(blockTime), 0),
+    }, nil
+}</code></pre>
+
+  <h3>Day 1 Deliverables</h3>
+  <ul class="chk">
+    <li>Go module initialized with <code>go mod init github.com/username/chainpulse</code></li>
+    <li>Core types: ChainEvent, DecodedEvent, WalletPosition, ChainConfig</li>
+    <li>TOML config parser with environment variable substitution</li>
+    <li>Ethclient WebSocket connection with exponential backoff reconnection</li>
+    <li>Multi-chain listener spawning one goroutine per configured chain</li>
+    <li>ABI decoder routing by event signature (Transfer, Swap, Borrow, Repay)</li>
+    <li>Kafka producer publishing to raw_events topic, partitioned by chain_id</li>
+    <li>Structured zerolog logging with chain + block context</li>
+    <li>Basic CLI: <code>chainpulse indexer --config config.toml</code></li>
+  </ul>
+</section>
+
+
+<!-- ═══════════════════ SECTION 4 — DAY 2 ═══════════════════ -->
+<section class="sect" id="t4">
+  <div class="sect-label">Day 02</div>
+  <h2>Processing Pipeline &amp; Protocol Decoders</h2>
+
+  <div class="dh">
+    <div class="dn d2">02</div>
+    <div class="di">
+      <h3>Processing — Kafka Consumer, Protocol Decoders, Position Aggregator</h3>
+      <p>Build the Kafka consumer that reads raw events, decodes them through protocol-specific decoders, aggregates wallet positions, and writes enriched data to ClickHouse + Redis.</p>
+    </div>
+  </div>
+
+  <h3>Protocol Decoder Interface</h3>
+
+  <div class="diagram">
+    <div class="mermaid">
+flowchart TB
+    subgraph IFACE["ProtocolDecoder Interface"]
+        PD["Name<br/>CanDecode - check event sig<br/>Decode - raw to structured<br/>SupportedEvents - list of sigs"]
+    end
+
+    subgraph IMPL["Implementations"]
+        direction LR
+        ERC["ERC20Decoder<br/>Transfer<br/>Approval"]
+        UNI["UniswapV3Decoder<br/>Swap, Mint<br/>Burn, Collect"]
+        AAVE_D["AaveV3Decoder<br/>Borrow, Repay<br/>Supply, Withdraw"]
+        COMP_D["CompoundDecoder<br/>SupplyCollateral<br/>Absorb"]
+    end
+
+    PD --> ERC
+    PD --> UNI
+    PD --> AAVE_D
+    PD --> COMP_D
+    </div>
+    <div class="diagram-cap">Figure 4.1 — Protocol Decoder Hierarchy: interface-based design allows adding new protocols without touching the pipeline</div>
+  </div>
+
+  <span class="code-tag go">Go — Protocol Decoder Interface</span>
+  <pre><code>// internal/processor/decoder.go
+package processor
+
+// ProtocolDecoder is the interface every protocol-specific decoder implements.
+// Adding a new protocol = implementing this interface. Nothing else changes.
+type ProtocolDecoder interface {
+    // Name returns the protocol identifier ("uniswap_v3", "aave_v3", "erc20")
+    Name() string
+
+    // CanDecode returns true if this decoder handles the given event signature
+    CanDecode(eventSig common.Hash) bool
+
+    // Decode transforms a raw ChainEvent into a protocol-specific DecodedEvent
+    Decode(event *types.ChainEvent) (*types.DecodedEvent, error)
+
+    // SupportedEvents returns all event signatures this decoder handles
+    SupportedEvents() []common.Hash
+}</code></pre>
+
+  <span class="code-tag go">Go — ERC-20 Decoder</span>
+  <pre><code>// internal/processor/protocols/erc20.go
+package protocols
+
+type ERC20Decoder struct{}
+
+func (d *ERC20Decoder) Name() string { return "erc20" }
+
+func (d *ERC20Decoder) CanDecode(sig common.Hash) bool {
+    return sig == ERC20TransferSig || sig == ERC20ApprovalSig
+}
+
+func (d *ERC20Decoder) Decode(event *types.ChainEvent) (*types.DecodedEvent, error) {
+    switch event.RawTopics[0] {
+    case ERC20TransferSig:
+        from := common.BytesToAddress(event.RawTopics[1].Bytes())
+        to := common.BytesToAddress(event.RawTopics[2].Bytes())
+        amount := new(big.Int).SetBytes(event.RawData)
+
+        return &types.DecodedEvent{
+            ChainEvent: *event,
+            Protocol:   "erc20",
+            EventType:  "transfer",
+            Params: map[string]interface{}{
+                "from":   from.Hex(),
+                "to":     to.Hex(),
+                "amount": amount.String(),
+                "token":  event.Contract.Hex(),
+            },
+        }, nil
+    }
+    return nil, fmt.Errorf("unsupported event")
+}</code></pre>
+
+  <span class="code-tag go">Go — Aave V3 Decoder</span>
+  <pre><code>// internal/processor/protocols/aave_v3.go
+package protocols
+
+type AaveV3Decoder struct {
+    poolABI abi.ABI
+}
+
+func (d *AaveV3Decoder) Name() string { return "aave_v3" }
+
+func (d *AaveV3Decoder) CanDecode(sig common.Hash) bool {
+    return sig == AaveBorrowSig || sig == AaveRepaySig ||
+           sig == AaveSupplySig || sig == AaveWithdrawSig ||
+           sig == AaveLiquidationSig
+}
+
+func (d *AaveV3Decoder) Decode(event *types.ChainEvent) (*types.DecodedEvent, error) {
+    switch event.RawTopics[0] {
+    case AaveBorrowSig:
+        // Decode: Borrow(address reserve, address user, address onBehalfOf,
+        //         uint256 amount, uint8 interestRateMode, uint256 borrowRate, uint16 referralCode)
+        decoded, err := d.poolABI.Events["Borrow"].Inputs.Unpack(event.RawData)
+        if err != nil {
+            return nil, err
+        }
+        reserve := common.BytesToAddress(event.RawTopics[1].Bytes())
+        user := common.BytesToAddress(event.RawTopics[2].Bytes())
+
+        return &types.DecodedEvent{
+            ChainEvent: *event,
+            Protocol:   "aave_v3",
+            EventType:  "borrow",
+            Params: map[string]interface{}{
+                "reserve":    reserve.Hex(),
+                "user":       user.Hex(),
+                "amount":     decoded[0].(*big.Int).String(),
+                "rate_mode":  decoded[1].(uint8),
+                "borrow_rate": decoded[2].(*big.Int).String(),
+            },
+        }, nil
+    }
+    return nil, fmt.Errorf("unsupported aave event")
+}</code></pre>
+
+  <h3>Position Aggregator</h3>
+
+  <span class="code-tag go">Go — Position Aggregator</span>
+  <pre><code>// internal/processor/aggregator.go
+package processor
+
+// PositionAggregator maintains a real-time view of wallet positions
+// by consuming decoded events and updating ClickHouse + Redis.
+type PositionAggregator struct {
+    clickhouse *sql.DB
+    redis      *redis.Client
+    decoders   []ProtocolDecoder
+}
+
+func (pa *PositionAggregator) ProcessEvent(event *types.DecodedEvent) error {
+    switch event.EventType {
+    case "transfer":
+        return pa.handleTransfer(event)
+    case "borrow":
+        return pa.handleBorrow(event)
+    case "supply":
+        return pa.handleSupply(event)
+    case "swap":
+        return pa.handleSwap(event)
+    }
+    return nil
+}
+
+func (pa *PositionAggregator) handleTransfer(event *types.DecodedEvent) error {
+    from := event.Params["from"].(string)
+    to := event.Params["to"].(string)
+    amount := event.Params["amount"].(string)
+    token := event.Params["token"].(string)
+
+    // Write the raw transfer event to ClickHouse
+    _, err := pa.clickhouse.Exec(`
+        INSERT INTO token_transfers
+        (chain_id, block_number, tx_hash, log_index, token, from_addr, to_addr, amount, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        event.ChainID, event.BlockNumber, event.TxHash.Hex(),
+        event.LogIndex, token, from, to, amount, event.Timestamp,
+    )
+    if err != nil {
+        return err
+    }
+
+    // Update Redis cache for both wallets
+    pa.redis.HIncrBy(ctx, fmt.Sprintf("balance:%s:%d:%s", from, event.ChainID, token), "amount", -amountInt)
+    pa.redis.HIncrBy(ctx, fmt.Sprintf("balance:%s:%d:%s", to, event.ChainID, token), "amount", amountInt)
+
+    return nil
+}</code></pre>
+
+  <h3>ClickHouse Schema</h3>
+
+  <span class="code-tag sql">ClickHouse — Table Definitions</span>
+  <pre><code>-- Token transfers across all chains
+CREATE TABLE token_transfers (
+    chain_id      UInt64,
+    block_number  UInt64,
+    tx_hash       String,
+    log_index     UInt32,
+    token         String,
+    from_addr     String,
+    to_addr       String,
+    amount        String,     -- stored as string to handle uint256
+    timestamp     DateTime
+) ENGINE = MergeTree()
+ORDER BY (chain_id, block_number, log_index);
+
+-- DeFi protocol events (borrows, supplies, swaps, liquidations)
+CREATE TABLE defi_events (
+    chain_id      UInt64,
+    block_number  UInt64,
+    tx_hash       String,
+    protocol      String,     -- "aave_v3", "uniswap_v3", "compound_v3"
+    event_type    String,     -- "borrow", "supply", "swap", "liquidation"
+    user_addr     String,
+    token_a       String,
+    token_b       Nullable(String),
+    amount_a      String,
+    amount_b      Nullable(String),
+    params        String,     -- JSON blob for protocol-specific data
+    timestamp     DateTime
+) ENGINE = MergeTree()
+ORDER BY (chain_id, protocol, block_number);
+
+-- Materialized view: wallet balances (aggregated)
+CREATE MATERIALIZED VIEW wallet_balances_mv
+ENGINE = SummingMergeTree()
+ORDER BY (chain_id, wallet, token)
+AS SELECT
+    chain_id,
+    to_addr AS wallet,
+    token,
+    toInt256(amount) AS balance_delta,
+    max(timestamp) AS last_updated
+FROM token_transfers
+GROUP BY chain_id, to_addr, token;</code></pre>
+
+  <h3>Day 2 Deliverables</h3>
+  <ul class="chk">
+    <li>Kafka consumer reading from raw_events topic with consumer group</li>
+    <li>ProtocolDecoder interface with four implementations: ERC-20, Uniswap V3, Aave V3, Compound V3</li>
+    <li>Position aggregator: consumes decoded events, updates wallet positions</li>
+    <li>ClickHouse schema: token_transfers, defi_events, wallet_balances_mv</li>
+    <li>ClickHouse batch writer (insert every 1s or 1000 events, whichever first)</li>
+    <li>Redis cache writer: hot wallet balances and positions</li>
+    <li>Kafka producer: decoded_events and positions_update topics</li>
+    <li>CLI command: <code>chainpulse processor --config config.toml</code></li>
+  </ul>
+</section>
+
+
+<!-- ═══════════════════ SECTION 5 — DAY 3 ═══════════════════ -->
+<section class="sect" id="t5">
+  <div class="sect-label">Day 03</div>
+  <h2>API Layer: REST, gRPC, WebSocket</h2>
+
+  <div class="dh">
+    <div class="dn d3">03</div>
+    <div class="di">
+      <h3>API — Gin REST, gRPC Internal, WebSocket Live Feed</h3>
+      <p>Build the API server with REST endpoints for external consumers, gRPC for internal service communication, and a WebSocket feed for real-time event streaming.</p>
+    </div>
+  </div>
+
+  <h3>API Endpoint Map</h3>
+
+  <table>
+    <thead><tr><th>Method</th><th>Endpoint</th><th>Description</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>/v1/wallet/{addr}/positions</code></td><td>All DeFi positions across chains</td><td>Redis → ClickHouse</td></tr>
+      <tr><td>GET</td><td><code>/v1/wallet/{addr}/balances</code></td><td>Token balances across chains</td><td>Redis</td></tr>
+      <tr><td>GET</td><td><code>/v1/wallet/{addr}/history</code></td><td>Transaction history with decoded events</td><td>ClickHouse</td></tr>
+      <tr><td>GET</td><td><code>/v1/token/{addr}/transfers</code></td><td>Recent transfers for a token</td><td>ClickHouse</td></tr>
+      <tr><td>GET</td><td><code>/v1/protocol/{name}/stats</code></td><td>Protocol-level TVL, volume, users</td><td>ClickHouse</td></tr>
+      <tr><td>GET</td><td><code>/v1/chain/{id}/blocks</code></td><td>Recent indexed blocks with event counts</td><td>ClickHouse</td></tr>
+      <tr><td>WS</td><td><code>/v1/events/stream</code></td><td>Real-time decoded event stream</td><td>Kafka consumer</td></tr>
+    </tbody>
+  </table>
+
+  <span class="code-tag go">Go — API Server (Gin)</span>
+  <pre><code>// internal/api/server.go
+package api
+
+import (
+    "github.com/gin-gonic/gin"
+    "github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+type Server struct {
+    clickhouse *sql.DB
+    redis      *redis.Client
+    router     *gin.Engine
+}
+
+func NewServer(ch *sql.DB, rd *redis.Client) *Server {
+    s := &Server{clickhouse: ch, redis: rd}
+    s.router = gin.New()
+    s.router.Use(gin.Recovery(), s.corsMiddleware(), s.rateLimitMiddleware())
+
+    v1 := s.router.Group("/v1")
+    {
+        v1.GET("/wallet/:address/positions", s.getWalletPositions)
+        v1.GET("/wallet/:address/balances", s.getWalletBalances)
+        v1.GET("/wallet/:address/history", s.getWalletHistory)
+        v1.GET("/token/:address/transfers", s.getTokenTransfers)
+        v1.GET("/protocol/:name/stats", s.getProtocolStats)
+        v1.GET("/chain/:id/blocks", s.getChainBlocks)
+        v1.GET("/events/stream", s.streamEvents) // WebSocket
+    }
+
+    s.router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+    s.router.GET("/health", s.healthCheck)
+
+    return s
+}
+
+func (s *Server) getWalletPositions(c *gin.Context) {
+    address := c.Param("address")
+    chainID := c.Query("chain_id") // optional filter
+
+    // Try Redis cache first
+    cacheKey := fmt.Sprintf("positions:%s", address)
+    cached, err := s.redis.Get(ctx, cacheKey).Result()
+    if err == nil {
+        c.Data(200, "application/json", []byte(cached))
+        return
+    }
+
+    // Cache miss → query ClickHouse
+    query := `
+        SELECT chain_id, protocol, event_type, user_addr, token_a, amount_a, timestamp
+        FROM defi_events
+        WHERE user_addr = ?
+        ORDER BY timestamp DESC
+        LIMIT 100`
+
+    rows, err := s.clickhouse.Query(query, address)
+    if err != nil {
+        c.JSON(500, gin.H{"error": "query failed"})
+        return
+    }
+    defer rows.Close()
+
+    var positions []WalletPosition
+    for rows.Next() {
+        var p WalletPosition
+        rows.Scan(&p.ChainID, &p.Protocol, &p.PositionType,
+                   &p.Wallet, &p.Token, &p.Amount, &p.UpdatedAt)
+        positions = append(positions, p)
+    }
+
+    // Cache for 30 seconds
+    data, _ := json.Marshal(positions)
+    s.redis.Set(ctx, cacheKey, data, 30*time.Second)
+
+    c.JSON(200, positions)
+}</code></pre>
+
+  <h3>Day 3 Deliverables</h3>
+  <ul class="chk">
+    <li>Gin REST server with 7 endpoints + health + metrics</li>
+    <li>Cache-aside pattern: Redis first → ClickHouse fallback</li>
+    <li>Rate limiting middleware (100 req/min per IP)</li>
+    <li>CORS middleware for frontend consumption</li>
+    <li>WebSocket endpoint streaming decoded events from Kafka</li>
+    <li>gRPC service definition for internal queries</li>
+    <li>Prometheus HTTP handler at /metrics</li>
+    <li>CLI command: <code>chainpulse api --config config.toml --port 8080</code></li>
+  </ul>
+</section>
+
+
+<!-- ═══════════════════ SECTION 6 — DAY 4 ═══════════════════ -->
+<section class="sect" id="t6">
+  <div class="sect-label">Day 04</div>
+  <h2>MCP Server &amp; AI Agent Tooling</h2>
+
+  <div class="dh">
+    <div class="dn d4">04</div>
+    <div class="di">
+      <h3>MCP — AI Agent Query Layer</h3>
+      <p>Build the MCP-compliant server that exposes on-chain data as structured tools. Any MCP-compatible AI agent (Claude, GPT) can query wallet positions, token transfers, and protocol stats conversationally.</p>
+    </div>
+  </div>
+
+  <div class="think">
+    <div class="think-ico">🤖</div>
+    <div>
+      <h4>What the MCP Server Actually Does</h4>
+      <p>Without ChainPulse's MCP server, an AI agent that wants to answer "What DeFi positions does 0xABC hold across all chains?" needs to: (1) know the Aave V3 pool address on each chain, (2) know the getUserAccountData ABI, (3) make 4+ RPC calls (one per chain), (4) decode the responses, (5) repeat for Compound, Uniswap, etc. With ChainPulse, the agent calls a single MCP tool: <code>get_wallet_positions(wallet: "0xABC")</code> and gets a JSON response with every position across every chain and protocol. The MCP server IS the translation layer between "human-language question" and "multi-chain data query." This is exactly what Lightning Labs means by "agent-facing tooling."</p>
+    </div>
+  </div>
+
+  <h3>MCP Tool Definitions</h3>
+
+  <div class="diagram">
+    <div class="mermaid">
+flowchart TB
+    subgraph AGENT["AI AGENT"]
+        Q["User asks:<br/>What tokens does 0xABC hold?"]
+    end
+
+    subgraph MCP_D["CHAINPULSE MCP SERVER"]
+        ROUTE["Tool Router<br/>match tool name"]
+        T1_M["get_wallet_positions<br/>DeFi positions across chains"]
+        T2_M["get_wallet_balances<br/>Token balances per chain"]
+        T3_M["get_token_transfers<br/>Recent transfers for a token"]
+        T4_M["get_defi_positions<br/>Protocol-specific positions"]
+        T5_M["get_protocol_stats<br/>TVL, volume, user count"]
+        T6_M["get_whale_activity<br/>Large transfers in last N hours"]
+    end
+
+    subgraph DATA_D["DATA LAYER"]
+        RD2["Redis - hot cache"]
+        CH2["ClickHouse - analytical"]
+    end
+
+    Q -->|"MCP tool call"| ROUTE
+    ROUTE --> T1_M
+    ROUTE --> T2_M
+    ROUTE --> T3_M
+    ROUTE --> T4_M
+    ROUTE --> T5_M
+    ROUTE --> T6_M
+    T1_M --> RD2
+    T2_M --> RD2
+    T3_M --> CH2
+    T4_M --> RD2
+    T5_M --> CH2
+    T6_M --> CH2
+    </div>
+    <div class="diagram-cap">Figure 6.1 — MCP Server: AI agent calls a tool → server queries Redis/ClickHouse → returns structured JSON</div>
+  </div>
+
+  <span class="code-tag go">Go — MCP Server</span>
+  <pre><code>// internal/mcp/server.go
+package mcp
+
+import (
+    "encoding/json"
+    "net/http"
+)
+
+type MCPServer struct {
+    clickhouse *sql.DB
+    redis      *redis.Client
+    tools      map[string]ToolHandler
+}
+
+type ToolHandler func(params map[string]interface{}) (interface{}, error)
+
+type ToolDefinition struct {
+    Name        string                 `json:"name"`
+    Description string                 `json:"description"`
+    InputSchema map[string]interface{} `json:"inputSchema"`
+}
+
+func NewMCPServer(ch *sql.DB, rd *redis.Client) *MCPServer {
+    s := &MCPServer{clickhouse: ch, redis: rd, tools: make(map[string]ToolHandler)}
+
+    s.tools["get_wallet_positions"] = s.getWalletPositions
+    s.tools["get_wallet_balances"] = s.getWalletBalances
+    s.tools["get_token_transfers"] = s.getTokenTransfers
+    s.tools["get_defi_positions"] = s.getDefiPositions
+    s.tools["get_protocol_stats"] = s.getProtocolStats
+    s.tools["get_whale_activity"] = s.getWhaleActivity
+
+    return s
+}
+
+// ListTools returns the tool definitions for MCP discovery
+func (s *MCPServer) ListTools() []ToolDefinition {
+    return []ToolDefinition{
+        {
+            Name:        "get_wallet_positions",
+            Description: "Get all DeFi positions (supply, borrow, LP) for a wallet across all indexed chains",
+            InputSchema: map[string]interface{}{
+                "type": "object",
+                "properties": map[string]interface{}{
+                    "wallet":   map[string]string{"type": "string", "description": "Wallet address (0x...)"},
+                    "chain_id": map[string]string{"type": "number", "description": "Optional: filter by chain"},
+                    "protocol": map[string]string{"type": "string", "description": "Optional: filter by protocol"},
+                },
+                "required": []string{"wallet"},
+            },
+        },
+        {
+            Name:        "get_wallet_balances",
+            Description: "Get token balances for a wallet across all indexed chains",
+            InputSchema: map[string]interface{}{
+                "type": "object",
+                "properties": map[string]interface{}{
+                    "wallet":   map[string]string{"type": "string", "description": "Wallet address (0x...)"},
+                    "chain_id": map[string]string{"type": "number", "description": "Optional: filter by chain"},
+                },
+                "required": []string{"wallet"},
+            },
+        },
+        {
+            Name:        "get_token_transfers",
+            Description: "Get recent token transfers involving a specific address or token",
+            InputSchema: map[string]interface{}{
+                "type": "object",
+                "properties": map[string]interface{}{
+                    "address": map[string]string{"type": "string", "description": "Wallet or token address"},
+                    "limit":   map[string]string{"type": "number", "description": "Max results (default 50)"},
+                },
+                "required": []string{"address"},
+            },
+        },
+        {
+            Name:        "get_protocol_stats",
+            Description: "Get protocol-level statistics: TVL, volume, unique users",
+            InputSchema: map[string]interface{}{
+                "type": "object",
+                "properties": map[string]interface{}{
+                    "protocol": map[string]string{"type": "string", "description": "Protocol name: aave_v3, uniswap_v3, compound_v3"},
+                    "chain_id": map[string]string{"type": "number", "description": "Optional: filter by chain"},
+                },
+                "required": []string{"protocol"},
+            },
+        },
+        {
+            Name:        "get_whale_activity",
+            Description: "Get large token transfers (whale activity) in the last N hours",
+            InputSchema: map[string]interface{}{
+                "type": "object",
+                "properties": map[string]interface{}{
+                    "hours":         map[string]string{"type": "number", "description": "Lookback period in hours"},
+                    "min_value_usd": map[string]string{"type": "number", "description": "Minimum transfer value in USD"},
+                },
+                "required": []string{"hours"},
+            },
+        },
+    }
+}
+
+// CallTool executes a tool by name with the given parameters
+func (s *MCPServer) CallTool(name string, params map[string]interface{}) (interface{}, error) {
+    handler, ok := s.tools[name]
+    if !ok {
+        return nil, fmt.Errorf("unknown tool: %s", name)
+    }
+    return handler(params)
+}
+
+// getWalletPositions returns all DeFi positions for a wallet
+func (s *MCPServer) getWalletPositions(params map[string]interface{}) (interface{}, error) {
+    wallet := params["wallet"].(string)
+
+    // Try Redis cache first
+    cacheKey := fmt.Sprintf("mcp:positions:%s", wallet)
+    if cached, err := s.redis.Get(ctx, cacheKey).Result(); err == nil {
+        var result []WalletPosition
+        json.Unmarshal([]byte(cached), &result)
+        return result, nil
+    }
+
+    // Query ClickHouse for all positions
+    rows, err := s.clickhouse.Query(`
+        SELECT chain_id, protocol, event_type, token_a, amount_a, timestamp
+        FROM defi_events
+        WHERE user_addr = ? AND event_type IN ('supply', 'borrow')
+        ORDER BY timestamp DESC
+        LIMIT 200`, wallet)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    var positions []map[string]interface{}
+    for rows.Next() {
+        var chainID uint64
+        var protocol, eventType, token, amount string
+        var ts time.Time
+        rows.Scan(&chainID, &protocol, &eventType, &token, &amount, &ts)
+        positions = append(positions, map[string]interface{}{
+            "chain_id":  chainID,
+            "protocol":  protocol,
+            "type":      eventType,
+            "token":     token,
+            "amount":    amount,
+            "updated":   ts.Format(time.RFC3339),
+        })
+    }
+
+    // Cache for 60 seconds
+    data, _ := json.Marshal(positions)
+    s.redis.Set(ctx, cacheKey, data, 60*time.Second)
+
+    return positions, nil
+}</code></pre>
+
+  <h3>Day 4 Deliverables</h3>
+  <ul class="chk">
+    <li>MCP-compliant server with SSE transport (stdio also supported)</li>
+    <li>6 tool definitions: wallet positions, balances, transfers, DeFi positions, protocol stats, whale activity</li>
+    <li>Tool router: matches tool name → executes handler → returns JSON</li>
+    <li>Redis caching on all MCP queries (60s TTL)</li>
+    <li>Tool discovery endpoint (tools/list)</li>
+    <li>Tested with Claude Desktop MCP integration</li>
+    <li>CLI command: <code>chainpulse mcp --config config.toml --port 3001</code></li>
+  </ul>
+</section>
+
+
+<!-- ═══════════════════ SECTION 7 — DAY 5 ═══════════════════ -->
+<section class="sect" id="t7">
+  <div class="sect-label">Day 05</div>
+  <h2>Deploy, Monitor &amp; Harden</h2>
+
+  <div class="dh">
+    <div class="dn d5">05</div>
+    <div class="di">
+      <h3>Production — Docker Compose, Prometheus, Grafana, Testing</h3>
+      <p>Containerize everything, set up observability, write integration tests, and deploy the full stack.</p>
+    </div>
+  </div>
+
+  <h3>Grafana Dashboard Panels</h3>
+  <div class="g3">
+    <div class="gc" style="text-align:center"><div class="mv">0</div><div class="ml">Events Indexed (24h)</div></div>
+    <div class="gc" style="text-align:center"><div class="mv">0</div><div class="ml">API Requests (24h)</div></div>
+    <div class="gc" style="text-align:center"><div class="mv">0</div><div class="ml">MCP Tool Calls (24h)</div></div>
+    <div class="gc" style="text-align:center"><div class="mv">&lt;50ms</div><div class="ml">p99 Query Latency</div></div>
+    <div class="gc" style="text-align:center"><div class="mv">4</div><div class="ml">Chains Indexed</div></div>
+    <div class="gc" style="text-align:center"><div class="mv">0</div><div class="ml">Kafka Consumer Lag</div></div>
+  </div>
+
+  <span class="code-tag docker">docker-compose.yml</span>
+  <pre><code>version: "3.9"
+
+services:
+  # ── Infrastructure ──
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LOG_RETENTION_HOURS: 168
+    ports: ["9092:9092"]
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    volumes: ["clickhouse_data:/var/lib/clickhouse", "./schema:/docker-entrypoint-initdb.d"]
+    ports: ["8123:8123", "9000:9000"]
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  # ── ChainPulse Services ──
+  indexer:
+    build: { context: ., dockerfile: docker/Dockerfile, target: indexer }
+    restart: unless-stopped
+    env_file: .env
+    depends_on: [kafka]
+    command: ["chainpulse", "indexer", "--config", "/etc/chainpulse/config.toml"]
+
+  processor:
+    build: { context: ., dockerfile: docker/Dockerfile, target: processor }
+    restart: unless-stopped
+    env_file: .env
+    depends_on: [kafka, clickhouse, redis]
+    command: ["chainpulse", "processor", "--config", "/etc/chainpulse/config.toml"]
+
+  api:
+    build: { context: ., dockerfile: docker/Dockerfile, target: api }
+    restart: unless-stopped
+    env_file: .env
+    depends_on: [clickhouse, redis]
+    ports: ["8080:8080"]
+    command: ["chainpulse", "api", "--config", "/etc/chainpulse/config.toml"]
+
+  mcp:
+    build: { context: ., dockerfile: docker/Dockerfile, target: mcp }
+    restart: unless-stopped
+    env_file: .env
+    depends_on: [clickhouse, redis]
+    ports: ["3001:3001"]
+    command: ["chainpulse", "mcp", "--config", "/etc/chainpulse/config.toml"]
+
+  # ── Observability ──
+  prometheus:
+    image: prom/prometheus:latest
+    volumes: ["./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml"]
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes: ["./monitoring/dashboards:/etc/grafana/provisioning/dashboards"]
+    ports: ["3000:3000"]
+
+volumes:
+  clickhouse_data:</code></pre>
+
+  <div class="callout callout-perf">
+    <div class="ct">Go-Live Strategy</div>
+    <p><strong>1.</strong> Start with Arbitrum + Base — fastest blocks, cheapest RPC. <strong>2.</strong> Run indexer + processor for 24h, verify ClickHouse data integrity. <strong>3.</strong> Enable API and test all 7 endpoints with curl. <strong>4.</strong> Enable MCP server and test with Claude Desktop. <strong>5.</strong> Add Ethereum + Polygon. <strong>6.</strong> Monitor Kafka lag and ClickHouse insert rates via Grafana.</p>
+  </div>
+
+  <h3>Day 5 Deliverables</h3>
+  <ul class="chk">
+    <li>Multi-stage Dockerfile for all 4 services</li>
+    <li>Docker Compose: full stack (Kafka + ClickHouse + Redis + 4 services + monitoring)</li>
+    <li>Prometheus metrics: events/sec, query latency, Kafka lag, cache hit ratio</li>
+    <li>Grafana dashboard JSON with 6 panels</li>
+    <li>Integration tests: indexer → Kafka → processor → ClickHouse → API → response</li>
+    <li>README.md: setup guide, config reference, API docs, MCP usage</li>
+    <li>Deploy to VPS and verify end-to-end flow</li>
+  </ul>
+</section>
+
+
+<!-- ═══════════════════ SECTION 8 — MULTI-CHAIN ═══════════════════ -->
+<section class="sect" id="t8">
+  <div class="sect-label">Section 08</div>
+  <h2>Multi-Chain Configuration Matrix</h2>
+  <table>
+    <thead><tr><th>Chain</th><th>Block Time</th><th>Events/Block</th><th>Priority</th><th>RPC Source</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Arbitrum</strong></td><td>0.25s</td><td>50-200</td><td>P0 (highest volume)</td><td>Alchemy / Infura</td></tr>
+      <tr><td><strong>Base</strong></td><td>2s</td><td>30-100</td><td>P0</td><td>Alchemy / QuickNode</td></tr>
+      <tr><td><strong>Ethereum</strong></td><td>12s</td><td>100-500</td><td>P1</td><td>Alchemy / Infura</td></tr>
+      <tr><td><strong>Polygon</strong></td><td>2s</td><td>50-200</td><td>P1</td><td>Alchemy / public</td></tr>
+    </tbody>
+  </table>
+</section>
+
+
+<!-- ═══════════════════ SECTION 9 — PROTOCOL DECODERS ═══════════════════ -->
+<section class="sect" id="t9">
+  <div class="sect-label">Section 09</div>
+  <h2>Protocol Decoder Coverage</h2>
+  <table>
+    <thead><tr><th>Protocol</th><th>Events Decoded</th><th>Chains</th><th>Priority</th></tr></thead>
+    <tbody>
+      <tr><td><strong>ERC-20</strong></td><td>Transfer, Approval</td><td>All</td><td>P0</td></tr>
+      <tr><td><strong>Uniswap V3</strong></td><td>Swap, Mint, Burn, Collect</td><td>ETH, ARB, BASE, POLY</td><td>P0</td></tr>
+      <tr><td><strong>Aave V3</strong></td><td>Supply, Withdraw, Borrow, Repay, Liquidation</td><td>ETH, ARB, BASE, POLY</td><td>P0</td></tr>
+      <tr><td><strong>Compound V3</strong></td><td>Supply, Withdraw, Absorb</td><td>ETH, ARB, BASE</td><td>P1</td></tr>
+      <tr><td><strong>ERC-721</strong></td><td>Transfer</td><td>All</td><td>P2</td></tr>
+    </tbody>
+  </table>
+</section>
+
+
+<!-- ═══════════════════ SECTION 10 — PERFORMANCE ═══════════════════ -->
+<section class="sect" id="t10">
+  <div class="sect-label">Section 10</div>
+  <h2>Performance Benchmarks &amp; Targets</h2>
+  <div class="g3">
+    <div class="gc" style="text-align:center"><div class="mv">&lt;100ms</div><div class="ml">Block Ingestion</div></div>
+    <div class="gc" style="text-align:center"><div class="mv">&lt;500ms</div><div class="ml">Event Processing</div></div>
+    <div class="gc" style="text-align:center"><div class="mv">&lt;5ms</div><div class="ml">Cache Hit Query</div></div>
+    <div class="gc" style="text-align:center"><div class="mv">&lt;50ms</div><div class="ml">p99 API Latency</div></div>
+    <div class="gc" style="text-align:center"><div class="mv">&lt;2s</div><div class="ml">Block → Queryable</div></div>
+    <div class="gc" style="text-align:center"><div class="mv">&lt;512MB</div><div class="ml">Total Memory (4 chains)</div></div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════ SECTION 11 — REPO ═══════════════════ -->
+<section class="sect" id="t11">
+  <div class="sect-label">Section 11</div>
+  <h2>Repository Structure</h2>
+  <pre><code>chainpulse/
+├── cmd/
+│   ├── indexer/main.go          # Indexer binary entry point
+│   ├── processor/main.go        # Processor binary entry point
+│   ├── api/main.go              # API server entry point
+│   └── mcp/main.go              # MCP server entry point
+├── internal/
+│   ├── types/
+│   │   ├── events.go            # ChainEvent, DecodedEvent, WalletPosition
+│   │   └── config.go            # ChainConfig, AppConfig
+│   ├── ingestion/
+│   │   ├── listener.go          # Multi-chain WebSocket listener
+│   │   ├── decoder.go           # ABI event decoder
+│   │   └── producer.go          # Kafka producer wrapper
+│   ├── processor/
+│   │   ├── consumer.go          # Kafka consumer
+│   │   ├── decoder.go           # ProtocolDecoder interface
+│   │   ├── aggregator.go        # Position aggregator
+│   │   ├── writer.go            # ClickHouse + Redis writer
+│   │   └── protocols/
+│   │       ├── erc20.go         # ERC-20 Transfer/Approval decoder
+│   │       ├── uniswap_v3.go    # Uniswap V3 Swap/Mint/Burn decoder
+│   │       ├── aave_v3.go       # Aave V3 Supply/Borrow/Liquidation decoder
+│   │       └── compound_v3.go   # Compound V3 decoder
+│   ├── api/
+│   │   ├── server.go            # Gin router + handlers
+│   │   ├── handlers/
+│   │   │   ├── wallet.go        # /wallet/* endpoints
+│   │   │   ├── token.go         # /token/* endpoints
+│   │   │   └── protocol.go      # /protocol/* endpoints
+│   │   ├── middleware/
+│   │   │   ├── ratelimit.go     # Rate limiter
+│   │   │   └── cors.go          # CORS handler
+│   │   └── websocket.go         # WebSocket event stream
+│   ├── mcp/
+│   │   ├── server.go            # MCP protocol server
+│   │   ├── tools.go             # Tool definitions + handlers
+│   │   └── transport.go         # SSE + stdio transports
+│   └── monitor/
+│       ├── metrics.go           # Prometheus counters, gauges, histograms
+│       └── health.go            # Health check endpoint
+├── schema/
+│   └── clickhouse.sql           # ClickHouse table definitions
+├── config/
+│   ├── config.toml              # Full configuration
+│   └── config.example.toml      # Minimal example
+├── monitoring/
+│   ├── prometheus.yml           # Scrape config
+│   └── dashboards/
+│       └── chainpulse.json      # Grafana dashboard
+├── docker/
+│   ├── Dockerfile               # Multi-stage build (4 targets)
+│   └── docker-compose.yml       # Full stack
+├── Makefile                     # build, test, lint, docker
+├── go.mod
+├── go.sum
+├── README.md
+├── LICENSE                      # MIT
+└── .env.example</code></pre>
+</section>
+
+
+<!-- ═══════════════════ SECTION 12 — SECURITY ═══════════════════ -->
+<section class="sect" id="t12">
+  <div class="sect-label">Section 12</div>
+  <h2>Security &amp; Operational Risk</h2>
+
+  <div class="diagram">
+    <div class="mermaid">
+flowchart TB
+    subgraph NET["NETWORK SECURITY"]
+        RPC_KEY["RPC API Keys<br/>in .env, never committed"]
+        RATE_L["Rate Limiting<br/>100 req per min per IP"]
+        CORS_CFG["CORS Whitelist<br/>only allowed origins"]
+    end
+
+    subgraph DATA_SEC["DATA INTEGRITY"]
+        REORG["Reorg Handling<br/>wait N confirmations"]
+        IDEMPOTENT["Idempotent Writes<br/>dedup by tx_hash and log_index"]
+        REPLAY_K["Kafka Replay<br/>reprocess from any offset"]
+    end
+
+    subgraph OPS_SEC["OPERATIONAL"]
+        HEALTH_C["Health Checks<br/>every service has /health"]
+        LAG_M["Kafka Lag Monitor<br/>alert if lag exceeds threshold"]
+        DISK_M["Disk Usage<br/>ClickHouse TTL auto-expire"]
+    end
+
+    RPC_KEY --> RATE_L --> CORS_CFG
+    REORG --> IDEMPOTENT --> REPLAY_K
+    HEALTH_C --> LAG_M --> DISK_M
+    </div>
+    <div class="diagram-cap">Figure 12.1 — Security Architecture: network, data integrity, and operational safeguards</div>
+  </div>
+
+  <table>
+    <thead><tr><th>Risk</th><th>Probability</th><th>Impact</th><th>Mitigation</th></tr></thead>
+    <tbody>
+      <tr><td>Chain reorg</td><td>Low (L2)</td><td>Stale data</td><td>Wait N confirmations before writing, reorg detection handler</td></tr>
+      <tr><td>RPC rate limit</td><td>Medium</td><td>Missed blocks</td><td>Multiple providers with failover, WebSocket over HTTP polling</td></tr>
+      <tr><td>Kafka down</td><td>Low</td><td>Pipeline halt</td><td>Persistent volume, auto-restart, lag alerting</td></tr>
+      <tr><td>ClickHouse disk full</td><td>Medium</td><td>Write failures</td><td>TTL-based expiry (90 days), MergeTree compression</td></tr>
+      <tr><td>API abuse</td><td>High</td><td>Service degradation</td><td>Rate limiting, API key auth for production</td></tr>
+      <tr><td>Stale cache</td><td>Medium</td><td>Wrong data shown</td><td>Short TTLs (30-60s), event-driven invalidation via Kafka</td></tr>
+    </tbody>
+  </table>
+</section>
+
+
+<!-- ═══════════════════ FOOTER ═══════════════════ -->
+<footer class="foot">
+  <p>ChainPulse — Multi-Chain Indexer + AI Agent Query Layer — PRD v1.0<br>
+  Open Source · MIT License · Built in 5 Days with Claude</p>
+</footer>
+
+</main>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'neutral',
+    securityLevel: 'loose',
+    themeVariables: {
+      primaryColor: '#F1DFC8',
+      primaryTextColor: '#2C1A0E',
+      primaryBorderColor: '#BB8A5C',
+      lineColor: '#9A6D3F',
+      secondaryColor: '#FAF0E4',
+      tertiaryColor: '#FFF8EF',
+      fontFamily: 'Inter, sans-serif',
+      fontSize: '13px',
+      nodeBorder: '#BB8A5C',
+      mainBkg: '#FAF0E4',
+      clusterBkg: '#F7EDE0',
+      clusterBorder: '#D1A87D',
+      titleColor: '#3F2718',
+      edgeLabelBackground: '#FDFAF5',
+      actorBorder: '#BB8A5C',
+      actorBkg: '#FAF0E4',
+      actorTextColor: '#2C1A0E',
+      actorLineColor: '#9A6D3F',
+      signalColor: '#5A3A22',
+      signalTextColor: '#2C1A0E',
+      sequenceNumberColor: '#B47A4A'
+    },
+    flowchart: { curve: 'basis', padding: 20, htmlLabels: true },
+    sequence: { actorMargin: 60, messageMargin: 40, mirrorActors: false, useMaxWidth: true }
+  });
+</script>
+
+</body>
+</html>

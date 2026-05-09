@@ -47,3 +47,17 @@ grafana_data/
 # Logs
 *.log
 logs/
+
+# Web (Next.js)
+web/node_modules/
+web/.next/
+web/out/
+web/.turbo/
+web/tsconfig.tsbuildinfo
+web/next-env.d.ts
+
+# Local AI agent guidance (not for upstream)
+AGENTS.md
+CLAUDE.md
+web/AGENTS.md
+web/CLAUDE.md
