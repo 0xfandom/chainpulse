@@ -187,11 +187,16 @@ curl http://localhost:8080/health
 docker compose exec -T indexer /app/indexer -healthcheck -probe-url http://localhost:9180/ready
 echo $?    # should print 0 once chains have caught up
 
-# Latest indexed block per chain (replace 8453 with whichever chain id you enabled)
-curl http://localhost:8080/v1/chain/8453/blocks?limit=1
+# Latest indexed block per chain (default chains: 1 = Ethereum, 137 = Polygon, 42161 = Arbitrum)
+curl http://localhost:8080/v1/chain/1/blocks?limit=1
+
+# Decoded events flowing through to ClickHouse
+curl 'http://localhost:8080/v1/protocol/uniswap_v3/stats' | jq
 ```
 
 If those work, the pipeline is alive: blocks are flowing from RPC to indexer to Kafka to processor to ClickHouse, and the API can read them back.
+
+If `/v1/protocol/...` returns `{"error":"protocol stats failed"}` and `curl http://localhost:8123/?query=SHOW%20TABLES%20FROM%20chainpulse` is empty, the ClickHouse schema did not auto-apply — see the "ClickHouse tables missing" entry in [Troubleshooting](#troubleshooting).
 
 ### 6. Open the dashboards (optional)
 
@@ -360,10 +365,16 @@ grpcurl -plaintext -d '{"wallet":"0xaaaa...","chain_id":1}' \
 ## WebSocket stream
 
 ```
-ws://localhost:8080/v1/events
+ws://localhost:8080/v1/events/stream
 ```
 
 Each connection joins an ephemeral Kafka consumer group at `LastOffset`, so it only receives events that arrive after the connection was opened. Heartbeat: 30s ping, 60s pong, 5s write timeout.
+
+Quick test from the shell (requires `wscat`, install with `npm i -g wscat`):
+
+```bash
+wscat -c ws://localhost:8080/v1/events/stream
+```
 
 ---
 
@@ -508,7 +519,25 @@ A 6-panel Grafana dashboard ships pre-provisioned at `monitoring/dashboards/chai
 ## Troubleshooting
 
 **`docker compose up` fails with port already in use.**
-Some other process is using one of `8080`, `8081`, `8123`, `9000`, `9092`, `29092`, `3030`, `3011`, `6379`, or `9090`. Stop the other process, or remap the port in `docker-compose.yml`.
+Some other process is using one of `3000` (web UI), `3011` (MCP), `3030` (Grafana), `6379` (Redis), `8080` / `8081` (API REST + gRPC), `8123` / `9000` (ClickHouse HTTP + native), `9090` (Prometheus), or `9092` / `29092` (Kafka). Stop the other process, or remap the port in `docker-compose.yml`.
+
+**ClickHouse tables missing (`Unknown table expression identifier 'chainpulse.token_transfers'`).**
+The schema files in `schema/` are auto-mounted into `/docker-entrypoint-initdb.d` and run on the **first** ClickHouse boot only. They no-op if the `clickhouse_data` volume already exists from a previous run, and on some hosts the init scripts apply against the `default` database instead of `chainpulse`. Symptom: every `/v1/...` endpoint returns an error. Verify, then apply manually:
+
+```bash
+docker exec chainpulse-clickhouse clickhouse-client -q "show tables from chainpulse"
+# if empty:
+for f in schema/01_token_transfers.sql schema/02_defi_events.sql schema/04_projections_migrate.sql; do
+  echo "==> $f"
+  docker exec -i chainpulse-clickhouse clickhouse-client --database=chainpulse --multiquery < "$f" && echo OK
+done
+docker compose restart indexer processor
+```
+
+`schema/03_wallet_balances_mv.sql` is **expected to fail** on ClickHouse 24.3 (`UNION ALL` inside `MATERIALIZED VIEW` is unsupported). It does not block the demo; `get_wallet_balances` MCP tool falls back to a runtime aggregate. Tracked as a known limitation.
+
+**Free-tier WSS keeps disconnecting (`websocket: close 1006 (abnormal closure): unexpected EOF`).**
+Some providers (e.g. BlockPI free tier) ship WSS endpoints that allow `eth_subscribe('newHeads', ...)` but reject the topic-filtered logs subscription used in `subscribe_mode = "logs"`. Log into the provider dashboard and explicitly enable WebSocket / `eth_subscribe` for your endpoint, then `docker compose restart indexer`. Alchemy, QuickNode, and Chainstack allow it by default on free tiers.
 
 **Indexer logs `connection refused` against `kafka:9092` for the first 30 seconds.**
 Expected on cold start. The kafka healthcheck has a `start_period` to absorb this; if errors persist past 1 minute, run `docker compose logs kafka` to see why the broker did not come up.
@@ -574,7 +603,7 @@ internal/
     server.go       Gin engine wiring + WS handler
   mcp/              JSON-RPC 2.0 server, tool registry, stdio + SSE transports
     tools/          7 concrete tool handlers
-schema/             ClickHouse DDL (mounted by docker-entrypoint-initdb.d)
+schema/             ClickHouse DDL (mounted to /docker-entrypoint-initdb.d; runs once on first boot — see Troubleshooting if the volume pre-existed)
 docker/             Dockerfile (multi-stage, all 4 binaries) + ClickHouse memory overlay
 config/             config.example.toml + config.docker.toml
 monitoring/         prometheus.yml + grafana provisioning + dashboard JSON
