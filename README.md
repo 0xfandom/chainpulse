@@ -47,6 +47,20 @@ Use cases:
 - A research tool that aggregates protocol stats over a 24h window.
 - An AI agent (Claude, custom GPT, etc.) that can answer on-chain questions in natural language.
 
+At a glance:
+
+```mermaid
+flowchart LR
+    RPC[EVM RPC<br/>Ethereum / Arbitrum / Polygon] --> CP[ChainPulse<br/>indexer + processor]
+    CP --> DB[(ClickHouse + Redis<br/>local storage)]
+    DB --> API[REST / gRPC / WebSocket<br/>:8080 :8081]
+    DB --> MCP[MCP server<br/>stdio / SSE :3001]
+    DB --> UI[Web UI<br/>:3000]
+    API --> APPS[Dashboards / bots / scripts]
+    MCP --> AGENTS[Claude Desktop / HTTP agents]
+    UI --> BROWSER[Browser]
+```
+
 ---
 
 ## What is MCP, and why is this useful
@@ -332,6 +346,31 @@ A full curl session script lives at `examples/mcp_curl_session.sh`.
 
 Inputs are JSON-Schema-validated at server boot. Bad inputs return `-32602 InvalidParams` with a `data: [{path, message}]` array so an agent can self-correct.
 
+How a tool call flows end-to-end:
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant C as Claude Desktop / HTTP agent
+    participant M as ChainPulse MCP
+    participant R as Redis
+    participant CH as ClickHouse
+
+    U->>C: "USDC transfers for 0xabc on Polygon?"
+    C->>M: tools/call get_token_transfers
+    M->>M: JSON-Schema validate args
+    M->>R: GET cache key
+    alt cache hit
+        R-->>M: cached JSON
+    else cache miss
+        M->>CH: SELECT ... FROM token_transfers
+        CH-->>M: rows
+        M->>R: SET (TTL = [mcp].cache_ttl)
+    end
+    M-->>C: JSON-RPC result
+    C-->>U: natural-language answer
+```
+
 ---
 
 ## REST and gRPC API
@@ -417,25 +456,69 @@ npm run dev
 
 Four independent binaries connected by Kafka topics:
 
+```mermaid
+flowchart TD
+    RPC[EVM RPC<br/>eth / arb / poly + extras from config.toml]
+
+    subgraph Ingest
+        IDX[cmd/indexer<br/>eth_subscribe logs<br/>ABI decode]
+        KRAW[(Kafka<br/>raw_events)]
+        PROC[cmd/processor<br/>protocol decoders<br/>batch + cache]
+        KDEC[(Kafka<br/>decoded_events)]
+    end
+
+    subgraph Storage
+        CH[(ClickHouse<br/>analytical store)]
+        RD[(Redis<br/>hot cache)]
+    end
+
+    subgraph "Query surfaces"
+        API[cmd/api<br/>REST :8080 / gRPC :8081<br/>WS /v1/events]
+        MCP[cmd/mcp<br/>stdio + SSE :3001]
+        UI[web/<br/>Next.js UI :3000]
+    end
+
+    Clients[Dashboards / bots / Claude Desktop / HTTP agents / browser]
+
+    RPC --> IDX
+    IDX --> KRAW --> PROC
+    PROC --> CH
+    PROC --> RD
+    PROC --> KDEC
+    CH --> API
+    RD --> API
+    KDEC --> API
+    CH --> MCP
+    RD --> MCP
+    CH --> UI
+    API --> Clients
+    MCP --> Clients
+    UI --> Clients
 ```
-EVM RPC (eth/arb/poly by default; add chains in config.toml)
-        |
-        v
-  cmd/indexer  -- topic-filtered eth_subscribe('logs', ...), decodes, writes raw_events
-        |
-        v
-  Kafka  raw_events
-        |
-        v
-  cmd/processor  -- decodes via Registry, batches into ClickHouse,
-                    updates Redis hot state, republishes decoded_events
-        |
-        v
-  ClickHouse + Redis
-        |
-        v
-  cmd/api   -- REST :8080, gRPC :8081, WS /v1/events
-  cmd/mcp   -- stdio (Claude Desktop) or SSE :3001 (HTTP agents)
+
+Per-event flow (one decoded log, indexer to client):
+
+```mermaid
+sequenceDiagram
+    participant Chain as EVM RPC
+    participant I as Indexer
+    participant K as Kafka
+    participant P as Processor
+    participant CH as ClickHouse
+    participant R as Redis
+    participant API as API / MCP / UI
+
+    Chain->>I: eth_subscribe logs (event)
+    I->>I: ABI decode + attach block meta
+    I->>K: produce raw_events
+    K->>P: consume raw_events
+    P->>P: protocol decoder (ERC-20, Uni V3, Aave, Compound, ...)
+    P->>CH: batched INSERT
+    P->>R: update hot state (balances, positions)
+    P->>K: produce decoded_events
+    K-->>API: WebSocket fan-out (live events)
+    CH-->>API: REST / gRPC / MCP queries
+    R-->>API: cached tool-call results
 ```
 
 An annotated diagram lives at `examples/architecture.html` (open in a browser).
