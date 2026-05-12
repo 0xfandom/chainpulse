@@ -23,7 +23,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <main key={pathname} className="flex-1 px-6 lg:px-12 py-10 max-w-[1320px] w-full mx-auto fade-in-up">{children}</main>
+        <main
+          key={pathname}
+          className={
+            pathname === "/docs"
+              ? "flex-1 w-full fade-in-up"
+              : "flex-1 px-6 lg:px-12 py-10 max-w-[1320px] w-full mx-auto fade-in-up"
+          }
+        >
+          {children}
+        </main>
         <Footer />
       </div>
     </div>

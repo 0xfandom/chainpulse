@@ -102,7 +102,7 @@ export default function Topbar({ onToggleSidebar, sidebarOpen }: { onToggleSideb
 
   return (
     <div className="h-20 border-b border-[var(--border)] bg-[var(--bg)] sticky top-0 z-20 flex items-center pl-3 pr-6 lg:pr-12 gap-4 shrink-0">
-      <div className="flex-1 flex items-center gap-4 min-w-0">
+      <div className="flex items-center gap-4 shrink-0">
         <button
           onClick={onToggleSidebar}
           aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
@@ -115,17 +115,11 @@ export default function Topbar({ onToggleSidebar, sidebarOpen }: { onToggleSideb
           <Logo size={36} />
           <span className="font-display text-[18px] font-extrabold tracking-[-0.02em] text-[var(--fg-strong)] hidden sm:inline">ChainPulse</span>
         </Link>
-
-        <div className="hidden lg:flex items-center gap-3 ml-2">
-          <span className="size-2 rounded-full bg-[var(--accent)] pulse-dot" />
-          <span className="font-mono uppercase tracking-[0.14em] text-[12px] font-semibold text-[var(--fg-strong)]">Live</span>
-          <span className="font-mono text-[12px] uppercase tracking-[0.12em] text-[var(--fg-muted)]">{utc} UTC · {ist} IST</span>
-        </div>
       </div>
 
-      <div ref={wrapRef} className="relative flex justify-center shrink-0">
-        <form onSubmit={onSubmit}>
-          <div className={`relative flex items-center w-[min(640px,40vw)] gap-2 rounded-full border bg-[var(--bg-card)] pl-4 pr-1 py-1 transition-all ${
+      <div ref={wrapRef} className="relative flex-1 min-w-0 flex justify-center">
+        <form onSubmit={onSubmit} className="w-full max-w-[720px]">
+          <div className={`relative flex items-center w-full gap-2 rounded-full border bg-[var(--bg-card)] pl-4 pr-1 py-1 transition-all ${
             valid ? "border-[var(--accent)] ring-2 ring-[var(--accent-soft)]" : addr ? "border-rose-300 dark:border-rose-400/50" : "border-[var(--border-strong)] focus-within:border-[var(--fg-strong)]"
           }`}>
             <Search className="size-3.5 text-[var(--fg-muted)] shrink-0" />
@@ -194,7 +188,12 @@ export default function Topbar({ onToggleSidebar, sidebarOpen }: { onToggleSideb
         )}
       </div>
 
-      <div className="flex-1 flex items-center justify-end gap-5 min-w-0">
+      <div className="flex items-center justify-end gap-5 ml-auto shrink-0 whitespace-nowrap">
+        <div className="hidden lg:flex items-center gap-3 whitespace-nowrap shrink-0">
+          <span className="size-2 rounded-full bg-[var(--accent)] pulse-dot" />
+          <span className="font-mono uppercase tracking-[0.14em] text-[12px] font-semibold text-[var(--fg-strong)]">Live</span>
+          <span className="font-mono text-[12px] uppercase tracking-[0.12em] text-[var(--fg-muted)]">{utc} UTC · {ist} IST</span>
+        </div>
         <a
           href="https://github.com/0xfandom/chainpulse"
           target="_blank"
